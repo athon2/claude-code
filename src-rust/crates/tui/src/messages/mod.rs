@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use cc_core::types::{ContentBlock, Message, Role, ToolResultContent};
+use claurst_core::types::{ContentBlock, Message, Role, ToolResultContent};
 use crate::kitty_image::render_image;
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -1381,10 +1381,10 @@ mod tests {
 
     #[test]
     fn test_render_user_memory_input() {
-        let result = render_user_memory_input("project", "Claude Code Rust Port");
+        let result = render_user_memory_input("project", "Claurst");
         assert_eq!(result.len(), 2);
         let first = line_text(&result[0]);
-        assert!(first.contains("# project: Claude Code Rust Port"));
+        assert!(first.contains("# project: Claurst"));
         let second = line_text(&result[1]);
         assert!(second.contains("Got it."));
     }

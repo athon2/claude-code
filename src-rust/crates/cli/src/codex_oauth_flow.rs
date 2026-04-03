@@ -1,7 +1,7 @@
-//! OpenAI Codex OAuth 2.0 PKCE flow for Claude Code.
+//! OpenAI Codex OAuth 2.0 PKCE flow for Claurst.
 //!
-//! Mirrors free-code's codex-client.ts: implements authorization code flow
-//! with PKCE to obtain OpenAI access tokens for Codex model access.
+//! Implements authorization code flow with PKCE to obtain OpenAI access
+//! tokens for Codex model access.
 
 #![allow(dead_code)] // OAuth functions are integrated via create_message_codex
 
@@ -10,8 +10,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener;
-use cc_core::oauth_config::CodexTokens;
-use cc_core::codex_oauth::{CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_REDIRECT_URI, CODEX_SCOPES, CODEX_TOKEN_URL};
+use claurst_core::oauth_config::CodexTokens;
+use claurst_core::codex_oauth::{CODEX_CLIENT_ID, CODEX_AUTHORIZE_URL, CODEX_REDIRECT_URI, CODEX_SCOPES, CODEX_TOKEN_URL};
 
 /// Generate a PKCE code verifier (random 64-byte base64url string).
 pub fn generate_code_verifier() -> String {

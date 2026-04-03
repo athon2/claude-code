@@ -1,5 +1,5 @@
 // cc-core: Core types, error handling, configuration, settings, and constants
-// for the Claude Code CLI Rust port.
+// for Claurst.
 //
 // All sub-modules are defined inline below.
 
@@ -64,7 +64,7 @@ pub use permissions::{
 pub mod error {
     use thiserror::Error;
 
-    /// The unified error type for the Claude Code Rust port.
+    /// The unified error type for Claurst.
     #[derive(Error, Debug)]
     pub enum ClaudeError {
         #[error("API error: {0}")]

@@ -6,7 +6,7 @@ use crate::agents_view::render_agents_menu;
 use crate::context_viz::render_context_viz;
 use crate::export_dialog::render_export_dialog;
 use crate::app::{App, SystemAnnotation, SystemMessageStyle, ToolStatus};
-use crate::clawd::{clawd_lines, ClawdPose};
+use crate::rustle::{rustle_lines, RustlePose};
 use crate::diff_viewer::render_diff_dialog;
 use crate::model_picker::render_model_picker;
 use crate::session_browser::render_session_browser;
@@ -38,7 +38,7 @@ use crate::settings_screen::render_settings_screen;
 use crate::stats_dialog::render_stats_dialog;
 use crate::theme_screen::render_theme_screen;
 use crate::virtual_list::{VirtualItem, VirtualList};
-use cc_core::constants::APP_VERSION;
+use claurst_core::constants::APP_VERSION;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -57,7 +57,7 @@ const SPINNER: &[char] = &['\u{00b7}', '\u{2722}', '*', '\u{2736}', '\u{273b}', 
 const SPINNER: &[char] = &['\u{00b7}', '\u{2722}', '\u{2733}', '\u{2736}', '\u{273b}', '\u{273d}',
                             '\u{273d}', '\u{273b}', '\u{2736}', '\u{2733}', '\u{2722}', '\u{00b7}'];
 const CLAUDE_ORANGE: Color = Color::Rgb(233, 30, 99);
-const WELCOME_BOX_HEIGHT: u16 = 11;
+const WELCOME_BOX_HEIGHT: u16 = 12;
 
 fn spinner_char(frame_count: u64) -> char {
     SPINNER[(frame_count as usize) % SPINNER.len()]
@@ -1033,7 +1033,7 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
     if area.height < box_height || box_width < 30 {
         // Too small: fall back to a single line
         let line = Line::from(vec![
-            Span::styled("Claude Code ", Style::default().fg(CLAUDE_ORANGE).add_modifier(Modifier::BOLD)),
+            Span::styled("Claurst ", Style::default().fg(CLAUDE_ORANGE).add_modifier(Modifier::BOLD)),
             Span::styled(format!("v{}", APP_VERSION), Style::default().fg(Color::DarkGray)),
         ]);
         frame.render_widget(Paragraph::new(vec![line]), area);
@@ -1041,13 +1041,13 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
     }
     let box_area = Rect { x: area.x, y: area.y, width: box_width, height: box_height };
 
-    // Outer border with title "Claude Code vX.Y"
+    // Outer border with title "Claurst vX.Y"
     let outer_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(CLAUDE_ORANGE))
         .title(Line::from(vec![
-            Span::styled(" Claude Code ", Style::default().fg(CLAUDE_ORANGE).add_modifier(Modifier::BOLD)),
+            Span::styled(" Claurst ", Style::default().fg(CLAUDE_ORANGE).add_modifier(Modifier::BOLD)),
             Span::styled(format!("v{} ", APP_VERSION), Style::default().fg(Color::DarkGray)),
         ]));
     frame.render_widget(outer_block, box_area);
@@ -1089,7 +1089,7 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         "Welcome back!".to_string()
     };
-    let clawd = clawd_lines(&ClawdPose::Default);
+    let rustle = rustle_lines(&RustlePose::Default);
     let model_line = format!("{} \u{00b7} API Usage Billing", app.model_name);
 
     let mut left_lines: Vec<Line> = Vec::new();
@@ -1101,7 +1101,7 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
     // Center mascot in left column
     let mascot_indent = left_w.saturating_sub(11) / 2;
     let pad = " ".repeat(mascot_indent as usize);
-    for cl in &clawd {
+    for cl in &rustle {
         let mut spans = vec![Span::raw(pad.clone())];
         spans.extend(cl.spans.iter().cloned());
         left_lines.push(Line::from(spans));
@@ -1119,7 +1119,7 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(left_lines).wrap(Wrap { trim: false }), h_chunks[0]);
 
     // --- Right column ---
-    let tip_text = cc_core::tips::select_tip(0)
+    let tip_text = claurst_core::tips::select_tip(0)
         .map(|t| t.content.to_string())
         .unwrap_or_else(|| "Run /init to create a CLAUDE.md file with instructions for Claude".to_string());
 
@@ -1150,11 +1150,11 @@ fn render_welcome_box(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Build a tool_use_id → tool_name lookup from all messages in the transcript.
 /// This allows ToolResult blocks to dispatch to tool-specific renderers.
-fn build_tool_names(messages: &[cc_core::types::Message]) -> std::collections::HashMap<String, String> {
+fn build_tool_names(messages: &[claurst_core::types::Message]) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
     for msg in messages {
         for block in msg.content_blocks() {
-            if let cc_core::types::ContentBlock::ToolUse { id, name, .. } = block {
+            if let claurst_core::types::ContentBlock::ToolUse { id, name, .. } = block {
                 map.insert(id.clone(), name.clone());
             }
         }
@@ -1164,7 +1164,7 @@ fn build_tool_names(messages: &[cc_core::types::Message]) -> std::collections::H
 
 fn render_message_lines(
     lines: &mut Vec<Line<'static>>,
-    msg: &cc_core::types::Message,
+    msg: &claurst_core::types::Message,
     width: usize,
     tool_names: &std::collections::HashMap<String, String>,
     expanded_thinking: &std::collections::HashSet<u64>,
@@ -1581,7 +1581,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         // Permission mode badge (left side, mirrors TS bottom-left indicator).
         // Default mode is silent; non-default modes show a badge.
         {
-            use cc_core::config::PermissionMode;
+            use claurst_core::config::PermissionMode;
             match &app.config.permission_mode {
                 PermissionMode::BypassPermissions => {
                     if !spans.is_empty() { spans.push(Span::raw("  ")); }

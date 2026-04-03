@@ -35,15 +35,15 @@ pub use session_memory::{
     ExtractedMemory, MemoryCategory, SessionMemoryExtractor, SessionMemoryState,
 };
 
-use cc_api::{
+use claurst_api::{
     ApiMessage, ApiToolDefinition, CreateMessageRequest, StreamAccumulator, StreamEvent,
     StreamHandler, SystemPrompt, ThinkingConfig,
 };
-use cc_core::config::Config;
-use cc_core::cost::CostTracker;
-use cc_core::error::ClaudeError;
-use cc_core::types::{ContentBlock, Message, ToolResultContent, UsageInfo};
-use cc_tools::{Tool, ToolContext, ToolResult};
+use claurst_core::config::Config;
+use claurst_core::cost::CostTracker;
+use claurst_core::error::ClaudeError;
+use claurst_core::types::{ContentBlock, Message, ToolResultContent, UsageInfo};
+use claurst_tools::{Tool, ToolContext, ToolResult};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -76,7 +76,7 @@ pub struct QueryConfig {
     pub max_turns: u32,
     pub system_prompt: Option<String>,
     pub append_system_prompt: Option<String>,
-    pub output_style: cc_core::system_prompt::OutputStyle,
+    pub output_style: claurst_core::system_prompt::OutputStyle,
     pub output_style_prompt: Option<String>,
     pub working_directory: Option<String>,
     pub thinking_budget: Option<u32>,
@@ -89,7 +89,7 @@ pub struct QueryConfig {
     /// the effort level's `thinking_budget_tokens()` is used as the
     /// thinking budget.  Also provides a temperature override when the
     /// level specifies one.
-    pub effort_level: Option<cc_core::effort::EffortLevel>,
+    pub effort_level: Option<claurst_core::effort::EffortLevel>,
     /// T1-4: Optional shared command queue.
     ///
     /// When set, the query loop drains this queue before each API call and
@@ -114,12 +114,12 @@ pub struct QueryConfig {
 impl Default for QueryConfig {
     fn default() -> Self {
         Self {
-            model: cc_core::constants::DEFAULT_MODEL.to_string(),
-            max_tokens: cc_core::constants::DEFAULT_MAX_TOKENS,
-            max_turns: cc_core::constants::MAX_TURNS_DEFAULT,
+            model: claurst_core::constants::DEFAULT_MODEL.to_string(),
+            max_tokens: claurst_core::constants::DEFAULT_MAX_TOKENS,
+            max_turns: claurst_core::constants::MAX_TURNS_DEFAULT,
             system_prompt: None,
             append_system_prompt: None,
-            output_style: cc_core::system_prompt::OutputStyle::Default,
+            output_style: claurst_core::system_prompt::OutputStyle::Default,
             output_style_prompt: None,
             working_directory: None,
             thinking_budget: None,
@@ -181,7 +181,7 @@ pub struct PostSamplingHookResult {
     /// Error messages produced by hooks with non-zero exit codes.
     /// These are injected into the conversation as user messages before the
     /// next model turn so the model can react to them.
-    pub blocking_errors: Vec<cc_core::types::Message>,
+    pub blocking_errors: Vec<claurst_core::types::Message>,
     /// When `true` the query loop must not continue and should surface the
     /// error messages to the caller.  Set when any hook exits with code > 1.
     pub prevent_continuation: bool,
@@ -195,11 +195,11 @@ pub struct PostSamplingHookResult {
 /// If the exit code is **strictly greater than 1** `prevent_continuation` is
 /// set so the query loop can return early.
 pub fn fire_post_sampling_hooks(
-    _turn_result: &cc_core::types::Message,
-    config: &cc_core::config::Config,
+    _turn_result: &claurst_core::types::Message,
+    config: &claurst_core::config::Config,
 ) -> PostSamplingHookResult {
-    use cc_core::config::HookEvent;
-    use cc_core::types::Message;
+    use claurst_core::config::HookEvent;
+    use claurst_core::types::Message;
 
     let mut result = PostSamplingHookResult::default();
 
@@ -260,11 +260,11 @@ pub fn fire_post_sampling_hooks(
 /// Stop hooks are non-blocking by design: the caller does not wait for them.
 /// Returns an empty `Vec` immediately; results (if any) are lost.
 pub fn stop_hooks_with_full_behavior(
-    turn_result: &cc_core::types::Message,
-    config: &cc_core::config::Config,
+    turn_result: &claurst_core::types::Message,
+    config: &claurst_core::config::Config,
     working_dir: std::path::PathBuf,
-) -> Vec<cc_core::types::Message> {
-    use cc_core::config::HookEvent;
+) -> Vec<claurst_core::types::Message> {
+    use claurst_core::config::HookEvent;
 
     let entries = match config.hooks.get(&HookEvent::Stop) {
         Some(e) if !e.is_empty() => e.clone(),
@@ -306,9 +306,9 @@ pub fn stop_hooks_with_full_behavior(
 fn total_tool_result_chars(messages: &[Message]) -> usize {
     messages
         .iter()
-        .filter(|m| m.role == cc_core::types::Role::User)
+        .filter(|m| m.role == claurst_core::types::Role::User)
         .flat_map(|m| match &m.content {
-            cc_core::types::MessageContent::Blocks(blocks) => blocks.as_slice(),
+            claurst_core::types::MessageContent::Blocks(blocks) => blocks.as_slice(),
             _ => &[],
         })
         .filter_map(|b| {
@@ -346,11 +346,11 @@ fn apply_tool_result_budget(messages: Vec<Message>, budget: usize) -> (Vec<Messa
     let mut result = messages;
 
     'outer: for msg in result.iter_mut() {
-        if msg.role != cc_core::types::Role::User {
+        if msg.role != claurst_core::types::Role::User {
             continue;
         }
         let blocks = match &mut msg.content {
-            cc_core::types::MessageContent::Blocks(b) => b,
+            claurst_core::types::MessageContent::Blocks(b) => b,
             _ => continue,
         };
         for block in blocks.iter_mut() {
@@ -404,7 +404,7 @@ const MAX_TOKENS_RECOVERY_MSG: &str =
 /// appended as a plain user message between turns.  Callers that do not need
 /// command queuing may pass `None` or an empty `Vec`.
 pub async fn run_query_loop(
-    client: &cc_api::AnthropicClient,
+    client: &claurst_api::AnthropicClient,
     messages: &mut Vec<Message>,
     tools: &[Box<dyn Tool>],
     tool_ctx: &ToolContext,
@@ -560,7 +560,7 @@ pub async fn run_query_loop(
             let tx = tx.clone();
             Arc::new(ChannelStreamHandler { tx })
         } else {
-            Arc::new(cc_api::streaming::NullStreamHandler)
+            Arc::new(claurst_api::streaming::NullStreamHandler)
         };
 
         // Send to API
@@ -714,9 +714,9 @@ pub async fn run_query_loop(
         // compact / context-collapse instead. This fires on every streaming turn
         // so it can act before a prompt-too-long error is returned by the API.
         //
-        // Feature gate check: CLAUDE_CODE_FEATURE_REACTIVE_COMPACT=1
+        // Feature gate check: CLAURST_FEATURE_REACTIVE_COMPACT=1
         let reactive_compact_enabled =
-            cc_core::feature_gates::is_feature_enabled("reactive_compact");
+            claurst_core::feature_gates::is_feature_enabled("reactive_compact");
 
         if reactive_compact_enabled {
             // Reactive path: emergency collapse takes priority over normal compact.
@@ -767,7 +767,7 @@ pub async fn run_query_loop(
                             "Reactive compact complete"
                         );
                     }
-                    Err(cc_core::error::ClaudeError::Cancelled) => {
+                    Err(claurst_core::error::ClaudeError::Cancelled) => {
                         warn!("Reactive compact was cancelled");
                     }
                     Err(e) => {
@@ -806,7 +806,7 @@ pub async fn run_query_loop(
         // Helper closure for firing the Stop hook.
         macro_rules! fire_stop_hook {
             ($msg:expr) => {{
-                let stop_ctx = cc_core::hooks::HookContext {
+                let stop_ctx = claurst_core::hooks::HookContext {
                     event: "Stop".to_string(),
                     tool_name: None,
                     tool_input: None,
@@ -814,9 +814,9 @@ pub async fn run_query_loop(
                     is_error: None,
                     session_id: Some(tool_ctx.session_id.clone()),
                 };
-                cc_core::hooks::run_hooks(
+                claurst_core::hooks::run_hooks(
                     &tool_ctx.config.hooks,
-                    cc_core::config::HookEvent::Stop,
+                    claurst_core::config::HookEvent::Stop,
                     &stop_ctx,
                     &tool_ctx.working_dir,
                 )
@@ -848,8 +848,8 @@ pub async fn run_query_loop(
                     // requiring an Arc in the existing run_query_loop signature.
                     if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
                         if !api_key.is_empty() {
-                            if let Ok(sm_client) = cc_api::AnthropicClient::new(
-                                cc_api::client::ClientConfig {
+                            if let Ok(sm_client) = claurst_api::AnthropicClient::new(
+                                claurst_api::client::ClientConfig {
                                     api_key,
                                     ..Default::default()
                                 },
@@ -920,7 +920,7 @@ pub async fn run_query_loop(
                             let ctx_for_dream = tool_ctx.clone();
                             tokio::spawn(async move {
                                 let agent = crate::agent_tool::AgentTool;
-                                let _result = cc_tools::Tool::execute(
+                                let _result = claurst_tools::Tool::execute(
                                     &agent,
                                     agent_input,
                                     &ctx_for_dream,
@@ -1024,7 +1024,7 @@ pub async fn run_query_loop(
                         }
 
                         let hooks = &tool_ctx.config.hooks;
-                        let hook_ctx = cc_core::hooks::HookContext {
+                        let hook_ctx = claurst_core::hooks::HookContext {
                             event: "PreToolUse".to_string(),
                             tool_name: Some(name.clone()),
                             tool_input: Some(input.clone()),
@@ -1032,27 +1032,27 @@ pub async fn run_query_loop(
                             is_error: None,
                             session_id: Some(tool_ctx.session_id.clone()),
                         };
-                        let pre_outcome = cc_core::hooks::run_hooks(
+                        let pre_outcome = claurst_core::hooks::run_hooks(
                             hooks,
-                            cc_core::config::HookEvent::PreToolUse,
+                            claurst_core::config::HookEvent::PreToolUse,
                             &hook_ctx,
                             &tool_ctx.working_dir,
                         )
                         .await;
 
                         let plugin_pre_outcome =
-                            cc_plugins::run_global_pre_tool_hook(&name, &input);
+                            claurst_plugins::run_global_pre_tool_hook(&name, &input);
 
                         let blocked_result =
-                            if let cc_core::hooks::HookOutcome::Blocked(reason) = pre_outcome {
+                            if let claurst_core::hooks::HookOutcome::Blocked(reason) = pre_outcome {
                                 warn!(tool = %name, reason = %reason, "PreToolUse hook blocked execution");
-                                Some(cc_tools::ToolResult::error(format!(
+                                Some(claurst_tools::ToolResult::error(format!(
                                     "Blocked by hook: {}",
                                     reason
                                 )))
-                            } else if let cc_plugins::HookOutcome::Deny(reason) = plugin_pre_outcome {
+                            } else if let claurst_plugins::HookOutcome::Deny(reason) = plugin_pre_outcome {
                                 warn!(tool = %name, reason = %reason, "Plugin PreToolUse hook blocked execution");
-                                Some(cc_tools::ToolResult::error(format!(
+                                Some(claurst_tools::ToolResult::error(format!(
                                     "Blocked by plugin hook: {}",
                                     reason
                                 )))
@@ -1098,7 +1098,7 @@ pub async fn run_query_loop(
                     Vec::with_capacity(prepared.len());
                 for (p, result) in prepared.iter().zip(exec_results.into_iter()) {
                     let hooks = &tool_ctx.config.hooks;
-                    let post_ctx = cc_core::hooks::HookContext {
+                    let post_ctx = claurst_core::hooks::HookContext {
                         event: "PostToolUse".to_string(),
                         tool_name: Some(p.name.clone()),
                         tool_input: Some(p.input.clone()),
@@ -1106,15 +1106,15 @@ pub async fn run_query_loop(
                         is_error: Some(result.is_error),
                         session_id: Some(tool_ctx.session_id.clone()),
                     };
-                    cc_core::hooks::run_hooks(
+                    claurst_core::hooks::run_hooks(
                         hooks,
-                        cc_core::config::HookEvent::PostToolUse,
+                        claurst_core::config::HookEvent::PostToolUse,
                         &post_ctx,
                         &tool_ctx.working_dir,
                     )
                     .await;
 
-                    cc_plugins::run_global_post_tool_hook(
+                    claurst_plugins::run_global_post_tool_hook(
                         &p.name,
                         &p.input,
                         &result.content,
@@ -1196,7 +1196,7 @@ async fn execute_tool(
 /// Load persisted todos for `session_id` and return a nudge string if any are
 /// incomplete (status != "completed"). Returns empty string otherwise.
 fn build_todo_nudge(session_id: &str) -> String {
-    let todos = cc_tools::todo_write::load_todos(session_id);
+    let todos = claurst_tools::todo_write::load_todos(session_id);
     let incomplete_count = todos
         .iter()
         .filter(|t| t["status"].as_str().map_or(true, |s| s != "completed"))
@@ -1215,7 +1215,7 @@ fn build_todo_nudge(session_id: &str) -> String {
 
 /// Build the system prompt from config.
 ///
-/// Delegates to `cc_core::system_prompt::build_system_prompt` so that all
+/// Delegates to `claurst_core::system_prompt::build_system_prompt` so that all
 /// default content (capabilities, safety guidelines, dynamic-boundary marker,
 /// etc.) is assembled in one place.  The `QueryConfig` fields map directly to
 /// `SystemPromptOptions`:
@@ -1223,7 +1223,7 @@ fn build_todo_nudge(session_id: &str) -> String {
 /// - `system_prompt`        → `custom_system_prompt` (added to cacheable block)
 /// - `append_system_prompt` → `append_system_prompt` (added after boundary)
 fn build_system_prompt(config: &QueryConfig) -> SystemPrompt {
-    use cc_core::system_prompt::SystemPromptOptions;
+    use claurst_core::system_prompt::SystemPromptOptions;
 
     let opts = SystemPromptOptions {
         custom_system_prompt: config.system_prompt.clone(),
@@ -1239,7 +1239,7 @@ fn build_system_prompt(config: &QueryConfig) -> SystemPrompt {
         ..Default::default()
     };
 
-    let text = cc_core::system_prompt::build_system_prompt(&opts);
+    let text = claurst_core::system_prompt::build_system_prompt(&opts);
     SystemPrompt::Text(text)
 }
 
@@ -1250,7 +1250,7 @@ fn build_system_prompt(config: &QueryConfig) -> SystemPrompt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cc_api::SystemPrompt;
+    use claurst_api::SystemPrompt;
 
     fn make_config(sys: Option<&str>, append: Option<&str>) -> QueryConfig {
         QueryConfig {
@@ -1259,7 +1259,7 @@ mod tests {
             max_turns: 10,
             system_prompt: sys.map(String::from),
             append_system_prompt: append.map(String::from),
-            output_style: cc_core::system_prompt::OutputStyle::Default,
+            output_style: claurst_core::system_prompt::OutputStyle::Default,
             output_style_prompt: None,
             working_directory: None,
             thinking_budget: None,
@@ -1278,17 +1278,17 @@ mod tests {
     #[test]
     fn test_system_prompt_default_when_empty() {
         // The default prompt (no custom system prompt set) should include the
-        // Claude Code attribution and standard sections.
+        // Claurst attribution and standard sections.
         let cfg = make_config(None, None);
         let prompt = build_system_prompt(&cfg);
         if let SystemPrompt::Text(text) = prompt {
             assert!(
-                text.contains("Claude Code") || text.contains("Claude agent"),
+                text.contains("Claurst") || text.contains("Claude agent"),
                 "Default prompt should contain attribution: {}",
                 text
             );
             assert!(
-                text.contains(cc_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY),
+                text.contains(claurst_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY),
                 "Default prompt must contain the dynamic boundary marker"
             );
         } else {
@@ -1308,7 +1308,7 @@ mod tests {
                 "Custom prompt text should appear in the output"
             );
             assert!(
-                text.contains("Claude Code") || text.contains("Claude agent"),
+                text.contains("Claurst") || text.contains("Claude agent"),
                 "Default attribution should still be present"
             );
         } else {
@@ -1326,7 +1326,7 @@ mod tests {
             assert!(text.contains("Additional context."));
             // append_system_prompt appears after the boundary
             let boundary_pos = text
-                .find(cc_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .find(claurst_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
                 .expect("boundary must exist");
             let append_pos = text.find("Additional context.").unwrap();
             assert!(
@@ -1350,7 +1350,7 @@ mod tests {
                 "Appended text must appear in the prompt"
             );
             let boundary_pos = text
-                .find(cc_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
+                .find(claurst_core::system_prompt::SYSTEM_PROMPT_DYNAMIC_BOUNDARY)
                 .expect("boundary must exist");
             let append_pos = text.find("Appended text.").unwrap();
             assert!(
@@ -1394,7 +1394,7 @@ mod tests {
         let s = format!("{:?}", outcome);
         assert!(s.contains("Cancelled"));
 
-        let err_outcome = QueryOutcome::Error(cc_core::error::ClaudeError::RateLimit);
+        let err_outcome = QueryOutcome::Error(claurst_core::error::ClaudeError::RateLimit);
         let s2 = format!("{:?}", err_outcome);
         assert!(s2.contains("Error"));
     }
@@ -1417,7 +1417,7 @@ impl StreamHandler for ChannelStreamHandler {
 
 /// Run a single (non-agentic) query – no tool loop, just one API call.
 pub async fn run_single_query(
-    client: &cc_api::AnthropicClient,
+    client: &claurst_api::AnthropicClient,
     messages: Vec<Message>,
     config: &QueryConfig,
 ) -> Result<Message, ClaudeError> {
@@ -1429,7 +1429,7 @@ pub async fn run_single_query(
         .system(system)
         .build();
 
-    let handler: Arc<dyn StreamHandler> = Arc::new(cc_api::streaming::NullStreamHandler);
+    let handler: Arc<dyn StreamHandler> = Arc::new(claurst_api::streaming::NullStreamHandler);
 
     let mut rx = client.create_message_stream(request, handler).await?;
     let mut acc = StreamAccumulator::new();

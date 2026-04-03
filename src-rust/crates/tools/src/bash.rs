@@ -3,8 +3,8 @@
 
 use crate::{PermissionLevel, ShellState, Tool, ToolContext, ToolResult, session_shell_state};
 use async_trait::async_trait;
-use cc_core::bash_classifier::{BashRiskLevel, classify_bash_command};
-use cc_core::tasks::{BackgroundTask, global_registry};
+use claurst_core::bash_classifier::{BashRiskLevel, classify_bash_command};
+use claurst_core::tasks::{BackgroundTask, global_registry};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -209,7 +209,7 @@ async fn run_in_background(command: String, cwd: PathBuf, timeout_ms: u64) -> To
                                 let code = status.code().unwrap_or(-1);
                                 global_registry().update_status(
                                     &task_id_clone,
-                                    cc_core::tasks::TaskStatus::Failed(
+                                    claurst_core::tasks::TaskStatus::Failed(
                                         format!("exit code {}", code)
                                     ),
                                 );
@@ -217,7 +217,7 @@ async fn run_in_background(command: String, cwd: PathBuf, timeout_ms: u64) -> To
                             Err(e) => {
                                 global_registry().update_status(
                                     &task_id_clone,
-                                    cc_core::tasks::TaskStatus::Failed(e.to_string()),
+                                    claurst_core::tasks::TaskStatus::Failed(e.to_string()),
                                 );
                             }
                         }
@@ -225,7 +225,7 @@ async fn run_in_background(command: String, cwd: PathBuf, timeout_ms: u64) -> To
                     Err(e) => {
                         global_registry().update_status(
                             &task_id_clone,
-                            cc_core::tasks::TaskStatus::Failed(e.to_string()),
+                            claurst_core::tasks::TaskStatus::Failed(e.to_string()),
                         );
                     }
                 }
@@ -236,7 +236,7 @@ async fn run_in_background(command: String, cwd: PathBuf, timeout_ms: u64) -> To
         if result.is_err() {
             global_registry().update_status(
                 &task_id_clone,
-                cc_core::tasks::TaskStatus::Failed(format!("timed out after {}ms", timeout_ms)),
+                claurst_core::tasks::TaskStatus::Failed(format!("timed out after {}ms", timeout_ms)),
             );
         }
     });
@@ -250,7 +250,7 @@ async fn run_in_background(command: String, cwd: PathBuf, timeout_ms: u64) -> To
 #[async_trait]
 impl Tool for BashTool {
     fn name(&self) -> &str {
-        cc_core::constants::TOOL_NAME_BASH
+        claurst_core::constants::TOOL_NAME_BASH
     }
 
     fn description(&self) -> &str {

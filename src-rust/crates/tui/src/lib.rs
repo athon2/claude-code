@@ -1,4 +1,4 @@
-// cc-tui: Terminal UI using ratatui + crossterm for the Claude Code Rust port.
+// claurst-tui: Terminal UI using ratatui + crossterm for Claurst.
 //
 // This crate provides the interactive terminal interface including:
 // - Message display with syntax highlighting
@@ -12,6 +12,7 @@
 // - Bridge connection status badge
 // - Plugin hint banners
 
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -26,8 +27,8 @@ use std::io::{self, Stdout};
 
 /// Figure/icon constants matching src/constants/figures.ts
 pub mod figures;
-/// Clawd robot mascot rendering.
-pub mod clawd;
+/// Rustle mascot rendering.
+pub mod rustle;
 /// Context window and rate-limit visualization overlay (/context).
 pub mod context_viz;
 /// Export format picker dialog (/export).
@@ -139,13 +140,11 @@ pub use onboarding_dialog::{OnboardingDialogState, render_onboarding_dialog};
 // Terminal initialization / teardown helpers (public API)
 // ---------------------------------------------------------------------------
 
-/// Set up the terminal for TUI mode (raw mode + alternate screen).
-/// Note: Mouse capture is intentionally disabled to allow native terminal text selection,
-/// trackpad zoom, and focus handling — matching the TypeScript version's behavior.
+/// Set up the terminal for TUI mode (raw mode + alternate screen + mouse capture).
 pub fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::new(backend)?;
     Ok(terminal)
@@ -154,7 +153,7 @@ pub fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
 /// Restore the terminal to its original state.
 pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
     Ok(())
 }
@@ -167,10 +166,10 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io
 mod tests {
     use super::*;
     use app::{App, HistorySearch, ToolStatus, ToolUseBlock};
-    use cc_core::config::Config;
-    use cc_core::cost::CostTracker;
-    use cc_core::file_history::FileHistory;
-    use cc_core::types::{ContentBlock, Role, ToolResultContent};
+    use claurst_core::config::Config;
+    use claurst_core::cost::CostTracker;
+    use claurst_core::file_history::FileHistory;
+    use claurst_core::types::{ContentBlock, Role, ToolResultContent};
     use dialogs::PermissionRequest;
     use notifications::NotificationKind;
     use ratatui::{backend::TestBackend, buffer::Buffer, layout::Rect, Terminal};
@@ -504,7 +503,7 @@ mod tests {
         let backend = TestBackend::new(120, 40);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = make_app();
-        app.push_message(cc_core::types::Message::user("hello".to_string()));
+        app.push_message(claurst_core::types::Message::user("hello".to_string()));
 
         terminal
             .draw(|frame| crate::render::render_app(frame, &app))
@@ -519,7 +518,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("");
 
-        assert!(rendered.contains("Claude Code"));
+        assert!(rendered.contains("Claurst"));
         assert!(rendered.contains("hello"));
     }
 
@@ -848,7 +847,7 @@ mod tests {
 
     #[test]
     fn test_message_renderer_includes_tool_use_and_thinking_blocks() {
-        let msg = cc_core::types::Message::assistant_blocks(vec![
+        let msg = claurst_core::types::Message::assistant_blocks(vec![
             ContentBlock::Thinking {
                 thinking: "reasoning".to_string(),
                 signature: "sig".to_string(),
@@ -877,7 +876,7 @@ mod tests {
 
     #[test]
     fn test_message_renderer_includes_tool_result_errors() {
-        let msg = cc_core::types::Message::user_blocks(vec![ContentBlock::ToolResult {
+        let msg = claurst_core::types::Message::user_blocks(vec![ContentBlock::ToolResult {
             tool_use_id: "toolu_1".to_string(),
             content: ToolResultContent::Text("boom".to_string()),
             is_error: Some(true),
@@ -899,7 +898,7 @@ mod tests {
     #[test]
     fn test_handle_status_event() {
         let mut app = make_app();
-        app.handle_query_event(cc_query::QueryEvent::Status("working".to_string()));
+        app.handle_query_event(claurst_query::QueryEvent::Status("working".to_string()));
         assert_eq!(app.status_message.as_deref(), Some("working"));
     }
 
@@ -907,7 +906,7 @@ mod tests {
     fn test_handle_error_event() {
         let mut app = make_app();
         app.is_streaming = true;
-        app.handle_query_event(cc_query::QueryEvent::Error("oops".to_string()));
+        app.handle_query_event(claurst_query::QueryEvent::Error("oops".to_string()));
         assert!(!app.is_streaming);
         assert_eq!(app.messages.len(), 1);
         assert!(app.messages[0].get_all_text().contains("oops"));
@@ -916,7 +915,7 @@ mod tests {
     #[test]
     fn test_handle_tool_start_and_end() {
         let mut app = make_app();
-        app.handle_query_event(cc_query::QueryEvent::ToolStart {
+        app.handle_query_event(claurst_query::QueryEvent::ToolStart {
             tool_name: "Bash".to_string(),
             tool_id: "t1".to_string(),
             input_json: r#"{"command":"ls -la"}"#.to_string(),
@@ -924,7 +923,7 @@ mod tests {
         assert_eq!(app.tool_use_blocks.len(), 1);
         assert_eq!(app.tool_use_blocks[0].status, ToolStatus::Running);
 
-        app.handle_query_event(cc_query::QueryEvent::ToolEnd {
+        app.handle_query_event(claurst_query::QueryEvent::ToolEnd {
             tool_name: "Bash".to_string(),
             tool_id: "t1".to_string(),
             result: "output".to_string(),
@@ -943,7 +942,7 @@ mod tests {
             output_preview: None,
             input_json: r#"{"file_path":"foo.rs"}"#.to_string(),
         });
-        app.handle_query_event(cc_query::QueryEvent::ToolEnd {
+        app.handle_query_event(claurst_query::QueryEvent::ToolEnd {
             tool_name: "Read".to_string(),
             tool_id: "t2".to_string(),
             result: "file not found".to_string(),
@@ -958,7 +957,7 @@ mod tests {
         let mut app = make_app();
         app.is_streaming = true;
         app.streaming_text = "partial response".to_string();
-        app.handle_query_event(cc_query::QueryEvent::TurnComplete {
+        app.handle_query_event(claurst_query::QueryEvent::TurnComplete {
             turn: 1,
             stop_reason: "end_turn".to_string(),
             usage: None,

@@ -1,13 +1,13 @@
-// cc-commands: Slash command system for the Claude Code Rust port.
+// claurst-commands: Slash command system for Claurst.
 //
 // This crate implements the /command framework that allows users to type
 // commands like /help, /compact, /clear, /model, /config, /cost, etc.
 // Each command is a struct implementing the `SlashCommand` trait.
 
 use async_trait::async_trait;
-use cc_core::config::{Config, Settings, Theme};
-use cc_core::cost::CostTracker;
-use cc_core::types::Message;
+use claurst_core::config::{Config, Settings, Theme};
+use claurst_core::cost::CostTracker;
+use claurst_core::types::Message;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 #[allow(unused_imports)]
@@ -29,7 +29,7 @@ pub struct CommandContext {
     pub remote_session_url: Option<String>,
     // Note: config already contains hooks, mcp_servers, etc.
     /// Live MCP manager — present when servers are connected.
-    pub mcp_manager: Option<Arc<cc_mcp::McpManager>>,
+    pub mcp_manager: Option<Arc<claurst_mcp::McpManager>>,
 }
 
 /// Result of running a slash command.
@@ -48,7 +48,7 @@ pub enum CommandResult {
     /// Replace the conversation with a specific message list (used by /rewind).
     SetMessages(Vec<Message>),
     /// Load a previously saved session into the live REPL.
-    ResumeSession(cc_core::history::ConversationSession),
+    ResumeSession(claurst_core::history::ConversationSession),
     /// Update the current session title.
     RenameSession(String),
     /// Trigger the OAuth login flow (handled by the REPL in main.rs).
@@ -237,7 +237,7 @@ fn open_with_system(target: &str) -> std::io::Result<()> {
     }
 }
 
-fn format_keystroke(keystroke: &cc_core::keybindings::ParsedKeystroke) -> String {
+fn format_keystroke(keystroke: &claurst_core::keybindings::ParsedKeystroke) -> String {
     let mut parts = Vec::new();
     if keystroke.ctrl {
         parts.push("ctrl".to_string());
@@ -258,7 +258,7 @@ fn format_keystroke(keystroke: &cc_core::keybindings::ParsedKeystroke) -> String
     parts.join("+")
 }
 
-fn format_chord(chord: &[cc_core::keybindings::ParsedKeystroke]) -> String {
+fn format_chord(chord: &[claurst_core::keybindings::ParsedKeystroke]) -> String {
     chord
         .iter()
         .map(format_keystroke)
@@ -268,9 +268,9 @@ fn format_chord(chord: &[cc_core::keybindings::ParsedKeystroke]) -> String {
 
 fn generate_keybindings_template() -> anyhow::Result<String> {
     let mut grouped: BTreeMap<String, BTreeMap<String, Option<String>>> = BTreeMap::new();
-    for binding in cc_core::keybindings::default_bindings() {
+    for binding in claurst_core::keybindings::default_bindings() {
         let chord = format_chord(&binding.chord);
-        if cc_core::keybindings::NON_REBINDABLE.contains(&chord.as_str()) {
+        if claurst_core::keybindings::NON_REBINDABLE.contains(&chord.as_str()) {
             continue;
         }
         grouped
@@ -309,7 +309,7 @@ fn current_output_style_name(config: &Config) -> &str {
 }
 
 fn available_output_style_names() -> Vec<String> {
-    cc_core::output_styles::all_styles(&Settings::config_dir())
+    claurst_core::output_styles::all_styles(&Settings::config_dir())
         .into_iter()
         .map(|style| style.name)
         .collect()
@@ -463,7 +463,7 @@ impl SlashCommand for HelpCommand {
                 .push(format!("  /{:<20} {}", format!("{}{}", cmd.name(), alias_str), cmd.description()));
         }
 
-        let mut output = String::from("Claude Code — Slash Commands\n");
+        let mut output = String::from("Claurst — Slash Commands\n");
         output.push_str("════════════════════════════\n");
 
         for cat in &category_order {
@@ -535,7 +535,7 @@ impl SlashCommand for CostCommand {
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
         let tracker = &ctx.cost_tracker;
         let model = ctx.config.effective_model();
-        let pricing = cc_core::cost::ModelPricing::for_model(model);
+        let pricing = claurst_core::cost::ModelPricing::for_model(model);
 
         let input = tracker.input_tokens();
         let output = tracker.output_tokens();
@@ -605,7 +605,7 @@ impl SlashCommand for CostCommand {
 impl SlashCommand for ExitCommand {
     fn name(&self) -> &str { "exit" }
     fn aliases(&self) -> Vec<&str> { vec!["quit", "q"] }
-    fn description(&self) -> &str { "Exit Claude Code" }
+    fn description(&self) -> &str { "Exit Claurst" }
 
     async fn execute(&self, _args: &str, _ctx: &mut CommandContext) -> CommandResult {
         CommandResult::Exit
@@ -777,14 +777,14 @@ impl SlashCommand for ConfigCommand {
             }
             "permission-mode" | "permission_mode" => {
                 let mode = match value.trim().to_lowercase().as_str() {
-                    "default" => cc_core::config::PermissionMode::Default,
+                    "default" => claurst_core::config::PermissionMode::Default,
                     "accept-edits" | "accept_edits" => {
-                        cc_core::config::PermissionMode::AcceptEdits
+                        claurst_core::config::PermissionMode::AcceptEdits
                     }
                     "bypass-permissions" | "bypass_permissions" => {
-                        cc_core::config::PermissionMode::BypassPermissions
+                        claurst_core::config::PermissionMode::BypassPermissions
                     }
-                    "plan" => cc_core::config::PermissionMode::Plan,
+                    "plan" => claurst_core::config::PermissionMode::Plan,
                     _ => {
                         return CommandResult::Error(
                             "Permission mode must be one of: default, accept-edits, bypass-permissions, plan"
@@ -1059,8 +1059,8 @@ impl SlashCommand for VersionCommand {
 
     async fn execute(&self, _args: &str, _ctx: &mut CommandContext) -> CommandResult {
         CommandResult::Message(format!(
-            "Claude Code (Rust) v{}",
-            cc_core::constants::APP_VERSION
+            "Claurst v{}",
+            claurst_core::constants::APP_VERSION
         ))
     }
 }
@@ -1075,7 +1075,7 @@ impl SlashCommand for ResumeCommand {
 
     async fn execute(&self, args: &str, _ctx: &mut CommandContext) -> CommandResult {
         if args.is_empty() {
-            let sessions = cc_core::history::list_sessions().await;
+            let sessions = claurst_core::history::list_sessions().await;
             if sessions.is_empty() {
                 return CommandResult::Message("No previous sessions found.".to_string());
             }
@@ -1097,7 +1097,7 @@ impl SlashCommand for ResumeCommand {
             output.push_str("\nUse /resume <id> to resume a session.");
             CommandResult::Message(output)
         } else {
-            match cc_core::history::load_session(args.trim()).await {
+            match claurst_core::history::load_session(args.trim()).await {
                 Ok(session) => CommandResult::ResumeSession(session),
                 Err(e) => CommandResult::Error(format!(
                     "Failed to load session {}: {}",
@@ -1118,7 +1118,7 @@ impl SlashCommand for StatusCommand {
 
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
         // Auth status
-        let auth_status = match cc_core::oauth::OAuthTokens::load().await {
+        let auth_status = match claurst_core::oauth::OAuthTokens::load().await {
             Some(tokens) => {
                 let sub = tokens.subscription_type.as_deref().unwrap_or("oauth");
                 format!("Authenticated ({})", sub)
@@ -1158,7 +1158,7 @@ impl SlashCommand for StatusCommand {
             .unwrap_or_else(|_| "n/a".to_string());
 
         CommandResult::Message(format!(
-            "Claude Code Status\n\
+            "Claurst Status\n\
              ══════════════════\n\
              Auth:           {auth_status}\n\
              Model:          {model}\n\
@@ -1460,7 +1460,7 @@ impl SlashCommand for MemoryCommand {
 impl SlashCommand for BugCommand {
     fn name(&self) -> &str { "feedback" }
     fn aliases(&self) -> Vec<&str> { vec!["bug"] }
-    fn description(&self) -> &str { "Submit feedback about Claude Code" }
+    fn description(&self) -> &str { "Submit feedback about Claurst" }
     fn help(&self) -> &str { "Usage: /feedback [report]" }
 
     async fn execute(&self, args: &str, _ctx: &mut CommandContext) -> CommandResult {
@@ -1501,7 +1501,7 @@ impl SlashCommand for UsageCommand {
         let cost = ctx.cost_tracker.total_cost_usd();
 
         // Try to get account tier from OAuth tokens
-        let account_info = match cc_core::oauth::OAuthTokens::load().await {
+        let account_info = match claurst_core::oauth::OAuthTokens::load().await {
             Some(tokens) => {
                 let sub = tokens.subscription_type.as_deref().unwrap_or("unknown");
                 format!("Plan: {}", sub)
@@ -1550,7 +1550,7 @@ impl SlashCommand for PluginCommand {
     fn description(&self) -> &str { "Manage plugins" }
     fn help(&self) -> &str {
         "Usage: /plugin [list|info <name>|enable <name>|disable <name>|install <path>|reload]\n\
-         Manage Claude Code plugins.\n\n\
+         Manage Claurst plugins.\n\n\
          Subcommands:\n\
            /plugin              — list all installed plugins\n\
            /plugin list         — list all installed plugins\n\
@@ -1568,31 +1568,31 @@ impl SlashCommand for PluginCommand {
         // fresh disk scan so the command still works without the global being set.
         async fn get_registry(
             project_dir: &std::path::Path,
-        ) -> cc_plugins::PluginRegistry {
-            if let Some(global) = cc_plugins::global_plugin_registry() {
-                let mut reg = cc_plugins::PluginRegistry::new();
+        ) -> claurst_plugins::PluginRegistry {
+            if let Some(global) = claurst_plugins::global_plugin_registry() {
+                let mut reg = claurst_plugins::PluginRegistry::new();
                 for p in global.all() {
                     reg.insert(p.clone());
                 }
                 reg
             } else {
-                cc_plugins::load_plugins(project_dir, &[]).await
+                claurst_plugins::load_plugins(project_dir, &[]).await
             }
         }
 
-        let parsed = cc_plugins::parse_plugin_args(args);
+        let parsed = claurst_plugins::parse_plugin_args(args);
         match parsed {
-            cc_plugins::PluginSubCommand::List => {
+            claurst_plugins::PluginSubCommand::List => {
                 let registry = get_registry(&project_dir).await;
-                CommandResult::Message(cc_plugins::format_plugin_list(&registry))
+                CommandResult::Message(claurst_plugins::format_plugin_list(&registry))
             }
-            cc_plugins::PluginSubCommand::Enable(ref name) if name.is_empty() => {
+            claurst_plugins::PluginSubCommand::Enable(ref name) if name.is_empty() => {
                 CommandResult::Error(
                     "Usage: /plugin enable <name>\nRun /plugin list to see installed plugins."
                         .to_string(),
                 )
             }
-            cc_plugins::PluginSubCommand::Enable(name) => {
+            claurst_plugins::PluginSubCommand::Enable(name) => {
                 let registry = get_registry(&project_dir).await;
                 if registry.get(&name).is_none() {
                     return CommandResult::Error(format!(
@@ -1600,7 +1600,7 @@ impl SlashCommand for PluginCommand {
                         name
                     ));
                 }
-                let mut settings = cc_core::config::Settings::load_sync().unwrap_or_default();
+                let mut settings = claurst_core::config::Settings::load_sync().unwrap_or_default();
                 settings.enabled_plugins.insert(name.clone());
                 settings.disabled_plugins.remove(&name);
                 let _ = settings.save_sync();
@@ -1609,13 +1609,13 @@ impl SlashCommand for PluginCommand {
                     name
                 ))
             }
-            cc_plugins::PluginSubCommand::Disable(ref name) if name.is_empty() => {
+            claurst_plugins::PluginSubCommand::Disable(ref name) if name.is_empty() => {
                 CommandResult::Error(
                     "Usage: /plugin disable <name>\nRun /plugin list to see installed plugins."
                         .to_string(),
                 )
             }
-            cc_plugins::PluginSubCommand::Disable(name) => {
+            claurst_plugins::PluginSubCommand::Disable(name) => {
                 let registry = get_registry(&project_dir).await;
                 if registry.get(&name).is_none() {
                     return CommandResult::Error(format!(
@@ -1623,7 +1623,7 @@ impl SlashCommand for PluginCommand {
                         name
                     ));
                 }
-                let mut settings = cc_core::config::Settings::load_sync().unwrap_or_default();
+                let mut settings = claurst_core::config::Settings::load_sync().unwrap_or_default();
                 settings.disabled_plugins.insert(name.clone());
                 settings.enabled_plugins.remove(&name);
                 let _ = settings.save_sync();
@@ -1632,24 +1632,24 @@ impl SlashCommand for PluginCommand {
                     name
                 ))
             }
-            cc_plugins::PluginSubCommand::Info(ref name) if name.is_empty() => {
+            claurst_plugins::PluginSubCommand::Info(ref name) if name.is_empty() => {
                 CommandResult::Error(
                     "Usage: /plugin info <name>\nRun /plugin list to see installed plugins."
                         .to_string(),
                 )
             }
-            cc_plugins::PluginSubCommand::Info(name) => {
+            claurst_plugins::PluginSubCommand::Info(name) => {
                 let registry = get_registry(&project_dir).await;
-                CommandResult::Message(cc_plugins::format_plugin_info(&registry, &name))
+                CommandResult::Message(claurst_plugins::format_plugin_info(&registry, &name))
             }
-            cc_plugins::PluginSubCommand::Install(ref path) if path.is_empty() => {
+            claurst_plugins::PluginSubCommand::Install(ref path) if path.is_empty() => {
                 CommandResult::Error(
                     "Usage: /plugin install <path>\nProvide the path to a local plugin directory."
                         .to_string(),
                 )
             }
-            cc_plugins::PluginSubCommand::Install(path) => {
-                let result = cc_plugins::install_plugin_from_path(
+            claurst_plugins::PluginSubCommand::Install(path) => {
+                let result = claurst_plugins::install_plugin_from_path(
                     std::path::Path::new(&path),
                 );
                 match result {
@@ -1660,13 +1660,13 @@ impl SlashCommand for PluginCommand {
                     Err(e) => CommandResult::Error(format!("Install failed: {}", e)),
                 }
             }
-            cc_plugins::PluginSubCommand::Reload => {
+            claurst_plugins::PluginSubCommand::Reload => {
                 let old_registry = get_registry(&project_dir).await;
                 let (new_registry, diff) =
-                    cc_plugins::reload_plugins(&old_registry, &project_dir, &[]).await;
-                CommandResult::Message(cc_plugins::format_reload_summary(&new_registry, &diff))
+                    claurst_plugins::reload_plugins(&old_registry, &project_dir, &[]).await;
+                CommandResult::Message(claurst_plugins::format_reload_summary(&new_registry, &diff))
             }
-            cc_plugins::PluginSubCommand::Help => {
+            claurst_plugins::PluginSubCommand::Help => {
                 CommandResult::Message(
                     "Plugin commands:\n\
                      /plugin              — list all installed plugins\n\
@@ -1697,11 +1697,11 @@ impl SlashCommand for ReloadPluginsCommand {
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
         let project_dir = ctx.working_dir.clone();
 
-        let old_registry = cc_plugins::load_plugins(&project_dir, &[]).await;
+        let old_registry = claurst_plugins::load_plugins(&project_dir, &[]).await;
         let (new_registry, diff) =
-            cc_plugins::reload_plugins(&old_registry, &project_dir, &[]).await;
+            claurst_plugins::reload_plugins(&old_registry, &project_dir, &[]).await;
 
-        CommandResult::Message(cc_plugins::format_reload_summary(&new_registry, &diff))
+        CommandResult::Message(claurst_plugins::format_reload_summary(&new_registry, &diff))
     }
 }
 
@@ -1711,7 +1711,7 @@ impl SlashCommand for ReloadPluginsCommand {
 /// built-in slash command.  The adapter is created on-the-fly inside
 /// `execute_command` when no built-in matches the input.
 pub struct PluginSlashCommandAdapter {
-    pub def: cc_plugins::PluginCommandDef,
+    pub def: claurst_plugins::PluginCommandDef,
 }
 
 #[async_trait]
@@ -1726,15 +1726,15 @@ impl SlashCommand for PluginSlashCommandAdapter {
 
     async fn execute(&self, args: &str, _ctx: &mut CommandContext) -> CommandResult {
         // Enforce capability grants before the action runs.
-        if let Err(reason) = cc_plugins::check_plugin_capability(&self.def) {
+        if let Err(reason) = claurst_plugins::check_plugin_capability(&self.def) {
             return CommandResult::Error(reason);
         }
 
         match &self.def.run_action {
-            cc_plugins::CommandRunAction::StaticResponse(msg) => {
+            claurst_plugins::CommandRunAction::StaticResponse(msg) => {
                 CommandResult::Message(msg.clone())
             }
-            cc_plugins::CommandRunAction::MarkdownPrompt {
+            claurst_plugins::CommandRunAction::MarkdownPrompt {
                 file_path,
                 plugin_root: _,
             } => {
@@ -1754,7 +1754,7 @@ impl SlashCommand for PluginSlashCommandAdapter {
                     )),
                 }
             }
-            cc_plugins::CommandRunAction::ShellCommand {
+            claurst_plugins::CommandRunAction::ShellCommand {
                 command,
                 plugin_root,
             } => {
@@ -1803,7 +1803,7 @@ impl SlashCommand for DoctorCommand {
          - Disk space\n\
          - Config file integrity\n\
          - Tool permission summary\n\
-         - Claude Code version"
+         - Claurst version"
     }
 
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
@@ -1811,7 +1811,7 @@ impl SlashCommand for DoctorCommand {
 
         // ── Header ─────────────────────────────────────────────────────────
         lines.push(format!(
-            "Claude Code v{}  |  {}",
+            "Claurst v{}  |  {}",
             env!("CARGO_PKG_VERSION"),
             std::env::consts::OS,
         ));
@@ -1951,7 +1951,7 @@ impl SlashCommand for DoctorCommand {
 
         // ── Config directory ────────────────────────────────────────────────
         lines.push("Configuration".to_string());
-        let config_dir = cc_core::config::Settings::config_dir();
+        let config_dir = claurst_core::config::Settings::config_dir();
         if config_dir.exists() {
             lines.push(format!("  ✓ Config dir: {}", config_dir.display()));
         } else {
@@ -1963,7 +1963,7 @@ impl SlashCommand for DoctorCommand {
         if settings_path.exists() {
             match std::fs::read_to_string(&settings_path)
                 .ok()
-                .and_then(|s| serde_json::from_str::<cc_core::config::Settings>(&s).ok())
+                .and_then(|s| serde_json::from_str::<claurst_core::config::Settings>(&s).ok())
             {
                 Some(_) => lines.push("  ✓ settings.json valid".to_string()),
                 None => {
@@ -2004,20 +2004,20 @@ impl SlashCommand for DoctorCommand {
             let statuses = mgr.all_statuses();
             for srv in ctx.config.mcp_servers.iter().take(12) {
                 let status_str = match statuses.get(&srv.name) {
-                    Some(cc_mcp::McpServerStatus::Connected { tool_count }) => {
+                    Some(claurst_mcp::McpServerStatus::Connected { tool_count }) => {
                         format!("  ✓ {} — connected ({} tool{})",
                             srv.name, tool_count, if *tool_count == 1 { "" } else { "s" })
                     }
-                    Some(cc_mcp::McpServerStatus::Connecting) => {
+                    Some(claurst_mcp::McpServerStatus::Connecting) => {
                         format!("  ⚠ {} — connecting…", srv.name)
                     }
-                    Some(cc_mcp::McpServerStatus::Disconnected { last_error: Some(e) }) => {
+                    Some(claurst_mcp::McpServerStatus::Disconnected { last_error: Some(e) }) => {
                         format!("  ✗ {} — failed: {}", srv.name, e)
                     }
-                    Some(cc_mcp::McpServerStatus::Disconnected { last_error: None }) => {
+                    Some(claurst_mcp::McpServerStatus::Disconnected { last_error: None }) => {
                         format!("  ✗ {} — disconnected", srv.name)
                     }
-                    Some(cc_mcp::McpServerStatus::Failed { error, .. }) => {
+                    Some(claurst_mcp::McpServerStatus::Failed { error, .. }) => {
                         format!("  ✗ {} — failed: {}", srv.name, error)
                     }
                     None => format!("  ⚠ {} — not started", srv.name),
@@ -2052,7 +2052,7 @@ impl SlashCommand for DoctorCommand {
 
         // ── Tool permissions ─────────────────────────────────────────────────
         lines.push("Tool Permissions".to_string());
-        let all_tool_names: Vec<String> = cc_tools::all_tools()
+        let all_tool_names: Vec<String> = claurst_tools::all_tools()
             .iter()
             .map(|t| t.name().to_string())
             .collect();
@@ -2068,10 +2068,10 @@ impl SlashCommand for DoctorCommand {
             .filter(|n| !explicit_tools.contains(n.as_str()))
             .count();
         let mode_label = match ctx.config.permission_mode {
-            cc_core::PermissionMode::BypassPermissions => "bypass-permissions (no confirmation required)",
-            cc_core::PermissionMode::AcceptEdits => "accept-edits (file edits auto-approved)",
-            cc_core::PermissionMode::Plan => "plan (read-only, no writes)",
-            cc_core::PermissionMode::Default => "default (confirm destructive actions)",
+            claurst_core::PermissionMode::BypassPermissions => "bypass-permissions (no confirmation required)",
+            claurst_core::PermissionMode::AcceptEdits => "accept-edits (file edits auto-approved)",
+            claurst_core::PermissionMode::Plan => "plan (read-only, no writes)",
+            claurst_core::PermissionMode::Default => "default (confirm destructive actions)",
         };
         lines.push(format!("  • Mode: {mode_label}"));
         lines.push(format!("  • Total built-in tools: {total_tools}"));
@@ -2085,7 +2085,7 @@ impl SlashCommand for DoctorCommand {
                 denied_count,
                 ctx.config.disallowed_tools.join(", ")));
         }
-        if ctx.config.permission_mode == cc_core::PermissionMode::Default {
+        if ctx.config.permission_mode == claurst_core::PermissionMode::Default {
             lines.push(format!("  ⚠ Require confirmation: {} tool(s)", confirm_count));
         }
         lines.push(String::new());
@@ -2128,11 +2128,11 @@ impl SlashCommand for LogoutCommand {
 
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
         // Clear OAuth tokens file
-        if let Err(e) = cc_core::oauth::OAuthTokens::clear().await {
+        if let Err(e) = claurst_core::oauth::OAuthTokens::clear().await {
             return CommandResult::Error(format!("Failed to clear OAuth tokens: {}", e));
         }
         // Also clear any API key stored in settings
-        let mut settings = cc_core::config::Settings::load().await.unwrap_or_default();
+        let mut settings = claurst_core::config::Settings::load().await.unwrap_or_default();
         settings.config.api_key = None;
         if let Err(e) = settings.save().await {
             return CommandResult::Error(format!("Failed to update settings: {}", e));
@@ -2201,14 +2201,14 @@ impl SlashCommand for ReviewCommand {
         // ------------------------------------------------------------------
         // 1. Collect the diff
         // ------------------------------------------------------------------
-        let repo_root = cc_core::git_utils::get_repo_root(&ctx.working_dir)
+        let repo_root = claurst_core::git_utils::get_repo_root(&ctx.working_dir)
             .unwrap_or_else(|| ctx.working_dir.clone());
 
         let diff = if base.is_empty() {
             // No base given — use staged changes; fall back to unstaged if empty.
-            let staged = cc_core::git_utils::get_staged_diff(&repo_root);
+            let staged = claurst_core::git_utils::get_staged_diff(&repo_root);
             if staged.is_empty() {
-                cc_core::git_utils::get_unstaged_diff(&repo_root)
+                claurst_core::git_utils::get_unstaged_diff(&repo_root)
             } else {
                 staged
             }
@@ -2284,7 +2284,7 @@ impl SlashCommand for ReviewCommand {
         // ------------------------------------------------------------------
         let model = ctx.config.effective_model().to_string();
 
-        let api_client = match cc_api::AnthropicClient::from_config(&ctx.config) {
+        let api_client = match claurst_api::AnthropicClient::from_config(&ctx.config) {
             Ok(c) => c,
             Err(e) => {
                 return CommandResult::Error(format!(
@@ -2315,8 +2315,8 @@ impl SlashCommand for ReviewCommand {
             file_summary, diff_for_llm
         );
 
-        let request = cc_api::CreateMessageRequest::builder(&model, 4096)
-            .messages(vec![cc_api::ApiMessage {
+        let request = claurst_api::CreateMessageRequest::builder(&model, 4096)
+            .messages(vec![claurst_api::ApiMessage {
                 role: "user".to_string(),
                 content: serde_json::Value::String(review_prompt),
             }])
@@ -2327,18 +2327,18 @@ impl SlashCommand for ReviewCommand {
             .build();
 
         use std::sync::Arc;
-        let handler: Arc<dyn cc_api::StreamHandler> =
-            Arc::new(cc_api::streaming::NullStreamHandler);
+        let handler: Arc<dyn claurst_api::StreamHandler> =
+            Arc::new(claurst_api::streaming::NullStreamHandler);
 
         let review_text = match api_client.create_message_stream(request, handler).await {
             Err(e) => {
                 return CommandResult::Error(format!("LLM call failed: {}", e));
             }
             Ok(mut rx) => {
-                let mut acc = cc_api::StreamAccumulator::new();
+                let mut acc = claurst_api::StreamAccumulator::new();
                 while let Some(evt) = rx.recv().await {
                     acc.on_event(&evt);
-                    if matches!(evt, cc_api::StreamEvent::MessageStop) {
+                    if matches!(evt, claurst_api::StreamEvent::MessageStop) {
                         break;
                     }
                 }
@@ -2370,7 +2370,7 @@ impl SlashCommand for ReviewCommand {
                 // Determine owner/repo from git remote
                 if let Some((owner, repo)) = detect_github_owner_repo(&repo_root) {
                     let comment_body = format!(
-                        "## Claude Code Review\n\n{}\n\n---\n*Generated by [Claude Code](https://claude.ai/claude-code)*",
+                        "## Claude Code Review\n\n{}\n\n---\n*Generated by [Claurst](https://claude.ai/claude-code)*",
                         review_text
                     );
 
@@ -2383,7 +2383,7 @@ impl SlashCommand for ReviewCommand {
                     let post_result = http
                         .post(&url)
                         .header("Authorization", format!("Bearer {}", token))
-                        .header("User-Agent", "claude-code-rust/1.0")
+                        .header("User-Agent", "claurst/1.0")
                         .header("Accept", "application/vnd.github+json")
                         .json(&serde_json::json!({ "body": comment_body }))
                         .send()
@@ -2688,7 +2688,7 @@ impl SlashCommand for McpCommand {
             if ctx.mcp_manager.is_none() {
                 output.push_str(
                     "\nNote: MCP manager is not active in this session.\n\
-                     Restart Claude Code to connect to MCP servers.\n\
+                     Restart Claurst to connect to MCP servers.\n\
                      Use /mcp connect <server> to retry a single server."
                 );
             }
@@ -2759,7 +2759,7 @@ impl McpCommand {
 
         // If already connected, nothing to do.
         if let Some(manager) = &ctx.mcp_manager {
-            use cc_mcp::McpServerStatus;
+            use claurst_mcp::McpServerStatus;
             match manager.server_status(server_name) {
                 McpServerStatus::Connected { tool_count } => {
                     return CommandResult::Message(format!(
@@ -2790,7 +2790,7 @@ impl McpCommand {
             } else {
                 format!("Configured env vars: {}", env_keys.join(", "))
             };
-            let token_note = match cc_mcp::oauth::get_mcp_token(server_name) {
+            let token_note = match claurst_mcp::oauth::get_mcp_token(server_name) {
                 Some(tok) if !tok.is_expired(60) => " (valid token stored)".to_string(),
                 Some(_) => " (stored token is expired)".to_string(),
                 None => " (no token stored)".to_string(),
@@ -2800,7 +2800,7 @@ impl McpCommand {
                  {}\n\n\
                  stdio servers authenticate via environment variables (API keys etc.).\n\
                  Add required variables to the 'env' block in ~/.claude/settings.json,\n\
-                 then restart Claude Code or run /mcp connect {} to reconnect.",
+                 then restart Claurst or run /mcp connect {} to reconnect.",
                 server_name, token_note, env_note, server_name
             ));
         }
@@ -2835,7 +2835,7 @@ impl McpCommand {
 
         // No live manager — static instructions.
         let server_url = srv.url.as_deref().unwrap_or("(URL not configured)");
-        let token_note = match cc_mcp::oauth::get_mcp_token(server_name) {
+        let token_note = match claurst_mcp::oauth::get_mcp_token(server_name) {
             Some(tok) if !tok.is_expired(60) => " (valid token stored)".to_string(),
             Some(_) => " (stored token is expired)".to_string(),
             None => " (no token stored)".to_string(),
@@ -2846,7 +2846,7 @@ impl McpCommand {
              To authenticate:\n\
              1. Open the server URL in your browser and complete OAuth\n\
              2. The token is saved to ~/.claude/mcp-tokens/{}.json\n\
-             3. Restart Claude Code — the token will be used automatically\n\n\
+             3. Restart Claurst — the token will be used automatically\n\n\
              Token storage: ~/.claude/mcp-tokens/{}.json",
             server_name, token_note, server_url, server_name, server_name
         ))
@@ -2858,7 +2858,7 @@ impl McpCommand {
             Some(m) => m,
             None => return CommandResult::Message(
                 "MCP manager is not active. No tool information available.\n\
-                 Restart Claude Code to connect to MCP servers.".to_string()
+                 Restart Claurst to connect to MCP servers.".to_string()
             ),
         };
 
@@ -2916,7 +2916,7 @@ impl McpCommand {
                 // No live manager — give useful instructions.
                 CommandResult::Message(format!(
                     "The MCP manager is not running in this session.\n\
-                     To connect '{}', restart Claude Code — servers connect automatically\n\
+                     To connect '{}', restart Claurst — servers connect automatically\n\
                      on startup using the configuration in ~/.claude/settings.json.\n\
                      \n\
                      If the server requires authentication, run /mcp auth {} first.",
@@ -2925,7 +2925,7 @@ impl McpCommand {
             }
             Some(manager) => {
                 let current = manager.server_status(server_name);
-                use cc_mcp::McpServerStatus;
+                use claurst_mcp::McpServerStatus;
                 match current {
                     McpServerStatus::Connected { tool_count } => {
                         CommandResult::Message(format!(
@@ -2953,7 +2953,7 @@ impl McpCommand {
                              If the server stays disconnected:\n\
                              1. Check authentication: /mcp auth {}\n\
                              2. Verify the command/URL in ~/.claude/settings.json\n\
-                             3. Restart Claude Code to force a full reconnect",
+                             3. Restart Claurst to force a full reconnect",
                             server_name,
                             manager.server_status(server_name).display(),
                             server_name
@@ -2980,7 +2980,7 @@ impl McpCommand {
         let mut lines = vec![format!("MCP Server Logs — '{}'\n──────────────────────", server_name)];
 
         if let Some(manager) = &ctx.mcp_manager {
-            use cc_mcp::McpServerStatus;
+            use claurst_mcp::McpServerStatus;
             let status = manager.server_status(server_name);
             lines.push(format!("Current status:  {}", status.display()));
 
@@ -3030,7 +3030,7 @@ impl McpCommand {
             }
         } else {
             lines.push("MCP manager is not active in this session.".to_string());
-            lines.push("Restart Claude Code to start the MCP runtime.".to_string());
+            lines.push("Restart Claurst to start the MCP runtime.".to_string());
         }
 
         // Hint about log files.
@@ -3125,9 +3125,9 @@ impl McpCommand {
                         let mut injected = String::new();
                         for msg in &result.messages {
                             let text = match &msg.content {
-                                cc_mcp::PromptMessageContent::Text { text } => text.clone(),
-                                cc_mcp::PromptMessageContent::Image { .. } => "[image]".to_string(),
-                                cc_mcp::PromptMessageContent::Resource { resource } => {
+                                claurst_mcp::PromptMessageContent::Text { text } => text.clone(),
+                                claurst_mcp::PromptMessageContent::Image { .. } => "[image]".to_string(),
+                                claurst_mcp::PromptMessageContent::Resource { resource } => {
                                     resource.to_string()
                                 }
                             };
@@ -3196,10 +3196,10 @@ impl SlashCommand for PermissionsCommand {
         match sub {
             "set" => {
                 let mode = match arg.to_lowercase().as_str() {
-                    "default" => cc_core::config::PermissionMode::Default,
-                    "accept-edits" | "accept_edits" => cc_core::config::PermissionMode::AcceptEdits,
-                    "bypass-permissions" | "bypass_permissions" => cc_core::config::PermissionMode::BypassPermissions,
-                    "plan" => cc_core::config::PermissionMode::Plan,
+                    "default" => claurst_core::config::PermissionMode::Default,
+                    "accept-edits" | "accept_edits" => claurst_core::config::PermissionMode::AcceptEdits,
+                    "bypass-permissions" | "bypass_permissions" => claurst_core::config::PermissionMode::BypassPermissions,
+                    "plan" => claurst_core::config::PermissionMode::Plan,
                     _ => return CommandResult::Error(
                         "Mode must be: default, accept-edits, bypass-permissions, or plan".to_string()
                     ),
@@ -3258,11 +3258,11 @@ impl SlashCommand for PermissionsCommand {
                 let mut new_config = ctx.config.clone();
                 new_config.allowed_tools.clear();
                 new_config.disallowed_tools.clear();
-                new_config.permission_mode = cc_core::config::PermissionMode::Default;
+                new_config.permission_mode = claurst_core::config::PermissionMode::Default;
                 if let Err(e) = save_settings_mutation(|s| {
                     s.config.allowed_tools.clear();
                     s.config.disallowed_tools.clear();
-                    s.config.permission_mode = cc_core::config::PermissionMode::Default;
+                    s.config.permission_mode = claurst_core::config::PermissionMode::Default;
                 }) {
                     return CommandResult::Error(format!("Failed to save: {}", e));
                 }
@@ -3338,7 +3338,7 @@ impl SlashCommand for SessionCommand {
     async fn execute(&self, args: &str, ctx: &mut CommandContext) -> CommandResult {
         match args.trim() {
             "list" => {
-                let sessions = cc_core::history::list_sessions().await;
+                let sessions = claurst_core::history::list_sessions().await;
                 if sessions.is_empty() {
                     CommandResult::Message("No saved sessions found.".to_string())
                 } else {
@@ -3378,7 +3378,7 @@ impl SlashCommand for SessionCommand {
                     ))
                 } else {
                     // Show current session info + recent sessions list.
-                    let sessions = cc_core::history::list_sessions().await;
+                    let sessions = claurst_core::history::list_sessions().await;
                     let mut output = format!(
                         "Current session\n\
                          ───────────────\n\
@@ -3453,11 +3453,11 @@ impl SlashCommand for ThinkingCommand {
 /// Assistant messages render as `## Assistant\n<text>` followed by
 /// `### Tool: <name>\n**Input:** …\n**Output:** …` for each tool call pair.
 fn export_message_to_markdown(
-    msg: &cc_core::types::Message,
-    all_messages: &[cc_core::types::Message],
+    msg: &claurst_core::types::Message,
+    all_messages: &[claurst_core::types::Message],
     msg_idx: usize,
 ) -> String {
-    use cc_core::types::{ContentBlock, MessageContent, Role, ToolResultContent};
+    use claurst_core::types::{ContentBlock, MessageContent, Role, ToolResultContent};
 
     let role_label = match msg.role {
         Role::User => "User",
@@ -3756,7 +3756,7 @@ impl SlashCommand for SkillsCommand {
         }
 
         // Include skills contributed by installed plugins.
-        if let Some(registry) = cc_plugins::global_plugin_registry() {
+        if let Some(registry) = claurst_plugins::global_plugin_registry() {
             for skill_dir in registry.all_skill_paths() {
                 if let Ok(entries) = std::fs::read_dir(&skill_dir) {
                     for entry in entries.flatten() {
@@ -3844,10 +3844,10 @@ impl SlashCommand for StatsCommand {
 
         // Count user/assistant turns separately.
         let user_turns = ctx.messages.iter()
-            .filter(|m| m.role == cc_core::types::Role::User)
+            .filter(|m| m.role == claurst_core::types::Role::User)
             .count();
         let assistant_turns = ctx.messages.iter()
-            .filter(|m| m.role == cc_core::types::Role::Assistant)
+            .filter(|m| m.role == claurst_core::types::Role::Assistant)
             .count();
 
         // Count tool-use invocations.
@@ -3979,8 +3979,8 @@ impl SlashCommand for RenameCommand {
                 let text = m.get_all_text();
                 if text.is_empty() { return None; }
                 let role = match m.role {
-                    cc_core::types::Role::User => "User",
-                    cc_core::types::Role::Assistant => "Assistant",
+                    claurst_core::types::Role::User => "User",
+                    claurst_core::types::Role::Assistant => "Assistant",
                 };
                 Some(format!("{}: {}", role, text.chars().take(300).collect::<String>()))
             })
@@ -3994,7 +3994,7 @@ impl SlashCommand for RenameCommand {
         }
 
         // Try to build an API client from the current config.
-        let client = match cc_api::AnthropicClient::from_config(&ctx.config) {
+        let client = match claurst_api::AnthropicClient::from_config(&ctx.config) {
             Ok(c) => c,
             Err(e) => {
                 return CommandResult::Error(format!(
@@ -4009,12 +4009,12 @@ impl SlashCommand for RenameCommand {
             Examples: fix-login-bug, add-auth-feature, refactor-api-client. \
             Respond with ONLY the name, nothing else.";
 
-        let request = cc_api::CreateMessageRequest::builder(
+        let request = claurst_api::CreateMessageRequest::builder(
             "claude-haiku-4-5".to_string(),
             64,
         )
         .system_text(system_prompt)
-        .add_message(cc_api::ApiMessage {
+        .add_message(claurst_api::ApiMessage {
             role: "user".to_string(),
             content: serde_json::Value::String(
                 format!("Conversation to name:\n\n{}", &excerpt[..excerpt.len().min(2000)])
@@ -4175,7 +4175,7 @@ struct UiSettings {
 }
 
 fn ui_settings_path() -> std::path::PathBuf {
-    cc_core::config::Settings::config_dir().join("ui-settings.json")
+    claurst_core::config::Settings::config_dir().join("ui-settings.json")
 }
 
 fn load_ui_settings() -> UiSettings {
@@ -4218,7 +4218,7 @@ impl SlashCommand for RemoteControlCommand {
     fn description(&self) -> &str { "Show or manage the remote control (Bridge) connection" }
     fn help(&self) -> &str {
         "Usage: /remote-control [start|stop|status]\n\n\
-         The Bridge feature lets you connect your local Claude Code CLI to the\n\
+         The Bridge feature lets you connect your local Claurst CLI to the\n\
          claude.ai web UI or mobile app.\n\n\
          Subcommands:\n\
          /remote-control          Show current bridge status and connection URL\n\
@@ -4228,7 +4228,7 @@ impl SlashCommand for RemoteControlCommand {
     }
 
     async fn execute(&self, args: &str, ctx: &mut CommandContext) -> CommandResult {
-        let settings = match cc_core::config::Settings::load().await {
+        let settings = match claurst_core::config::Settings::load().await {
             Ok(s) => s,
             Err(e) => return CommandResult::Error(format!("Failed to load settings: {}", e)),
         };
@@ -4241,10 +4241,10 @@ impl SlashCommand for RemoteControlCommand {
                     .map(|h| h.to_string_lossy().into_owned())
                     .unwrap_or_else(|_| "(unknown host)".to_string());
 
-                let bridge_url = std::env::var("CLAUDE_CODE_BRIDGE_URL")
+                let bridge_url = std::env::var("CLAURST_BRIDGE_URL")
                     .unwrap_or_else(|_| "https://claude.ai".to_string());
 
-                let token_status = if std::env::var("CLAUDE_CODE_BRIDGE_TOKEN").is_ok()
+                let token_status = if std::env::var("CLAURST_BRIDGE_TOKEN").is_ok()
                     || std::env::var("CLAUDE_BRIDGE_OAUTH_TOKEN").is_ok()
                 {
                     "configured via environment variable"
@@ -4262,7 +4262,7 @@ impl SlashCommand for RemoteControlCommand {
                          ──────────────\n\
                          Session URL:  {url}\n\
                          Share this URL or QR code with others to let them connect\n\
-                         to this Claude Code session from the claude.ai web UI.\n",
+                         to this Claurst session from the claude.ai web UI.\n",
                         url = url
                     )
                 } else {
@@ -4270,14 +4270,14 @@ impl SlashCommand for RemoteControlCommand {
                 };
 
                 // Device fingerprint (first 12 chars are enough for display)
-                let fingerprint = cc_bridge::device_fingerprint();
+                let fingerprint = claurst_bridge::device_fingerprint();
                 let fp_short = &fingerprint[..fingerprint.len().min(12)];
 
                 CommandResult::Message(format!(
                     "Remote Control (Bridge)\n\
                      ═══════════════════════\n\
                      What it does: lets you connect the claude.ai web UI or mobile app\n\
-                     to this running Claude Code CLI session on your local machine.\n\
+                     to this running Claurst CLI session on your local machine.\n\
                      All prompts and responses are relayed bidirectionally.\n\
                      \n\
                      Local Machine\n\
@@ -4294,9 +4294,9 @@ impl SlashCommand for RemoteControlCommand {
                      How to connect\n\
                      ──────────────\n\
                      1. Obtain a session token from claude.ai (Settings → Remote Control)\n\
-                     2. Set it:  export CLAUDE_CODE_BRIDGE_TOKEN=<your-token>\n\
+                     2. Set it:  export CLAURST_BRIDGE_TOKEN=<your-token>\n\
                      3. Enable:  /remote-control start\n\
-                     4. Restart Claude Code — the bridge will connect automatically\n\
+                     4. Restart Claurst — the bridge will connect automatically\n\
                      5. Open {bridge_url}/claude-code in your browser\n\
                      \n\
                      Note: Full bridge polling requires server-side session infrastructure.\n\
@@ -4317,9 +4317,9 @@ impl SlashCommand for RemoteControlCommand {
                 if let Err(e) = save_settings_mutation(|s| s.remote_control_at_startup = true) {
                     return CommandResult::Error(format!("Failed to save settings: {}", e));
                 }
-                let bridge_url = std::env::var("CLAUDE_CODE_BRIDGE_URL")
+                let bridge_url = std::env::var("CLAURST_BRIDGE_URL")
                     .unwrap_or_else(|_| "https://claude.ai".to_string());
-                let token_note = if std::env::var("CLAUDE_CODE_BRIDGE_TOKEN").is_ok()
+                let token_note = if std::env::var("CLAURST_BRIDGE_TOKEN").is_ok()
                     || std::env::var("CLAUDE_BRIDGE_OAUTH_TOKEN").is_ok()
                 {
                     "Session token detected in environment — bridge will connect on next start."
@@ -4328,13 +4328,13 @@ impl SlashCommand for RemoteControlCommand {
                     format!(
                         "No session token found.\n\
                          Get a token from {bridge_url} (Settings → Remote Control)\n\
-                         then run:  export CLAUDE_CODE_BRIDGE_TOKEN=<token>",
+                         then run:  export CLAURST_BRIDGE_TOKEN=<token>",
                         bridge_url = bridge_url
                     )
                 };
                 CommandResult::Message(format!(
                     "Remote control bridge enabled at startup.\n\
-                     Restart Claude Code to activate the bridge connection.\n\n\
+                     Restart Claurst to activate the bridge connection.\n\n\
                      {token_note}",
                     token_note = token_note
                 ))
@@ -4365,7 +4365,7 @@ impl SlashCommand for RemoteEnvCommand {
     fn description(&self) -> &str { "Show and manage environment variables for remote sessions" }
     fn help(&self) -> &str {
         "Usage: /remote-env [set <KEY> <VALUE> | unset <KEY> | list]\n\n\
-         Manages env vars stored in config that are forwarded to remote Claude Code sessions.\n\
+         Manages env vars stored in config that are forwarded to remote Claurst sessions.\n\
          These are persisted to settings under the 'env' key."
     }
 
@@ -4539,11 +4539,11 @@ impl SlashCommand for CopyCommand {
         let n: usize = args.trim().parse().unwrap_or(1).max(1);
 
         // Find the Nth most recent assistant message
-        let assistant_msgs: Vec<&cc_core::types::Message> = ctx
+        let assistant_msgs: Vec<&claurst_core::types::Message> = ctx
             .messages
             .iter()
             .rev()
-            .filter(|m| m.role == cc_core::types::Role::Assistant)
+            .filter(|m| m.role == claurst_core::types::Role::Assistant)
             .take(n)
             .collect();
 
@@ -5206,16 +5206,16 @@ impl SlashCommand for UpgradeCommand {
     fn description(&self) -> &str { "Check for updates and show upgrade options" }
     fn help(&self) -> &str {
         "Usage: /upgrade\n\n\
-         Checks GitHub releases for the latest version of Claude Code.\n\
+         Checks GitHub releases for the latest version of Claurst.\n\
          If a newer version is available, shows the upgrade command."
     }
 
     async fn execute(&self, _args: &str, _ctx: &mut CommandContext) -> CommandResult {
-        let current = cc_core::constants::APP_VERSION;
+        let current = claurst_core::constants::APP_VERSION;
 
         // Check GitHub releases API for latest version
         let client = reqwest::Client::builder()
-            .user_agent(format!("claude-code-rust/{}", current))
+            .user_agent(format!("claurst/{}", current))
             .timeout(std::time::Duration::from_secs(8))
             .build();
 
@@ -5253,7 +5253,7 @@ impl SlashCommand for UpgradeCommand {
 
                 if tag == current || tag == "unknown" {
                     CommandResult::Message(format!(
-                        "Claude Code v{current} — you are up to date.\n\
+                        "Claurst v{current} — you are up to date.\n\
                          Release page: {url}"
                     ))
                 } else {
@@ -5265,7 +5265,7 @@ impl SlashCommand for UpgradeCommand {
                          To upgrade (npm):\n\
                            npm install -g @anthropic-ai/claude-code@latest\n\n\
                          To upgrade (cargo):\n\
-                           cargo install claude-code --force"
+                           cargo install claurst --force"
                     ))
                 }
             }
@@ -5299,7 +5299,7 @@ impl SlashCommand for ReleaseNotesCommand {
     }
 
     async fn execute(&self, args: &str, _ctx: &mut CommandContext) -> CommandResult {
-        let current = cc_core::constants::APP_VERSION;
+        let current = claurst_core::constants::APP_VERSION;
         let version = args.trim();
 
         let tag = if version.is_empty() {
@@ -5311,7 +5311,7 @@ impl SlashCommand for ReleaseNotesCommand {
         };
 
         let client = reqwest::Client::builder()
-            .user_agent(format!("claude-code-rust/{}", current))
+            .user_agent(format!("claurst/{}", current))
             .timeout(std::time::Duration::from_secs(8))
             .build();
 
@@ -5319,7 +5319,7 @@ impl SlashCommand for ReleaseNotesCommand {
             Ok(c) => c,
             Err(_) => {
                 return CommandResult::Message(format!(
-                    "Claude Code {tag} release notes:\n\
+                    "Claurst {tag} release notes:\n\
                      Visit https://github.com/anthropics/claude-code/releases/tag/{tag}"
                 ))
             }
@@ -5351,7 +5351,7 @@ impl SlashCommand for ReleaseNotesCommand {
                     .unwrap_or("");
 
                 CommandResult::Message(format!(
-                    "Release Notes: Claude Code {tag}\n\
+                    "Release Notes: Claurst {tag}\n\
                      Published: {published}\n\
                      URL: {html_url}\n\
                      ─────────────────────────────────\n\
@@ -5390,7 +5390,7 @@ impl SlashCommand for RateLimitOptionsCommand {
 
     async fn execute(&self, _args: &str, ctx: &mut CommandContext) -> CommandResult {
         // Try to read from OAuth tokens file to get subscription/tier info
-        let tier_info = match cc_core::oauth::OAuthTokens::load().await {
+        let tier_info = match claurst_core::oauth::OAuthTokens::load().await {
             Some(tokens) => {
                 let sub_type = tokens.subscription_type.as_deref().unwrap_or("unknown");
                 format!(
@@ -5576,11 +5576,11 @@ impl SlashCommand for SecurityReviewCommand {
 #[async_trait]
 impl SlashCommand for TerminalSetupCommand {
     fn name(&self) -> &str { "terminal-setup" }
-    fn description(&self) -> &str { "Help configure your terminal for optimal Claude Code use" }
+    fn description(&self) -> &str { "Help configure your terminal for optimal Claurst use" }
     fn help(&self) -> &str {
         "Usage: /terminal-setup\n\n\
          Diagnoses your terminal environment and gives recommendations for\n\
-         optimal Claude Code display (font, color support, Unicode, etc.)."
+         optimal Claurst display (font, color support, Unicode, etc.)."
     }
 
     async fn execute(&self, _args: &str, _ctx: &mut CommandContext) -> CommandResult {
@@ -5644,7 +5644,7 @@ impl SlashCommand for TerminalSetupCommand {
             "Terminal Setup Diagnostic\n\
              ─────────────────────────\n\
              {checks}\n\n\
-             Recommendations for optimal Claude Code experience:\n\
+             Recommendations for optimal Claurst experience:\n\
              ─────────────────────────────────────────────────\n\
              1. Font: Use a Nerd Font for box-drawing characters and icons\n\
                 {nerd_hint}\n\
@@ -5695,7 +5695,7 @@ impl SlashCommand for ExtraUsageCommand {
 
         // Estimate API calls from messages (each assistant message ~ 1 API call)
         let api_calls = ctx.messages.iter()
-            .filter(|m| m.role == cc_core::types::Role::Assistant)
+            .filter(|m| m.role == claurst_core::types::Role::Assistant)
             .count();
         let api_calls = api_calls.max(1); // at least 1 if we have any data
 
@@ -5770,7 +5770,7 @@ impl SlashCommand for AdvisorCommand {
 
     async fn execute(&self, args: &str, _ctx: &mut CommandContext) -> CommandResult {
         let arg = args.trim();
-        let settings_dir = cc_core::config::Settings::config_dir();
+        let settings_dir = claurst_core::config::Settings::config_dir();
         let settings_path = settings_dir.join("settings.json");
 
         // Read or create settings JSON
@@ -5822,18 +5822,18 @@ impl SlashCommand for AdvisorCommand {
 #[async_trait]
 impl SlashCommand for InstallSlackAppCommand {
     fn name(&self) -> &str { "install-slack-app" }
-    fn description(&self) -> &str { "Install the Claude Code Slack integration" }
+    fn description(&self) -> &str { "Install the Claurst Slack integration" }
     fn help(&self) -> &str {
         "Usage: /install-slack-app\n\n\
-         Opens instructions for installing the Claude Code Slack app.\n\
+         Opens instructions for installing the Claurst Slack app.\n\
          Requires a Claude for Enterprise subscription."
     }
 
     async fn execute(&self, _args: &str, _ctx: &mut CommandContext) -> CommandResult {
         CommandResult::Message(
-            "Claude Code Slack Integration\n\
+            "Claurst Slack Integration\n\
              ─────────────────────────────\n\
-             To install Claude Code in Slack:\n\n\
+             To install Claurst in Slack:\n\n\
              1. Ensure you have a Claude for Enterprise subscription\n\
              2. Visit your Anthropic Console → Integrations → Slack\n\
              3. Click \"Add to Slack\" and authorize the app\n\
@@ -5884,7 +5884,7 @@ impl SlashCommand for FastCommand {
 
         let fast_model = "claude-haiku-4-5";
         let normal_model = ctx.config.model.as_deref()
-            .unwrap_or(cc_core::constants::DEFAULT_MODEL);
+            .unwrap_or(claurst_core::constants::DEFAULT_MODEL);
 
         if enable {
             let mut new_config = ctx.config.clone();
@@ -5905,7 +5905,7 @@ impl SlashCommand for FastCommand {
                 new_config,
                 format!(
                     "Fast mode OFF. Restored to default model ({}).",
-                    cc_core::constants::DEFAULT_MODEL
+                    claurst_core::constants::DEFAULT_MODEL
                 ),
             )
         }
@@ -5933,7 +5933,7 @@ impl SlashCommand for ThinkBackCommand {
             .messages
             .iter()
             .enumerate()
-            .filter(|(_, m)| m.role == cc_core::types::Role::Assistant)
+            .filter(|(_, m)| m.role == claurst_core::types::Role::Assistant)
             .filter_map(|(idx, m)| {
                 let blocks = m.get_thinking_blocks();
                 if blocks.is_empty() {
@@ -5942,7 +5942,7 @@ impl SlashCommand for ThinkBackCommand {
                 let thinking: String = blocks
                     .iter()
                     .filter_map(|b| {
-                        if let cc_core::types::ContentBlock::Thinking { thinking, .. } = b {
+                        if let claurst_core::types::ContentBlock::Thinking { thinking, .. } = b {
                             Some(thinking.as_str())
                         } else {
                             None
@@ -6000,7 +6000,7 @@ impl SlashCommand for ThinkBackPlayCommand {
         let thinking_blocks: Vec<String> = ctx
             .messages
             .iter()
-            .filter(|m| m.role == cc_core::types::Role::Assistant)
+            .filter(|m| m.role == claurst_core::types::Role::Assistant)
             .filter_map(|m| {
                 let blocks = m.get_thinking_blocks();
                 if blocks.is_empty() {
@@ -6009,7 +6009,7 @@ impl SlashCommand for ThinkBackPlayCommand {
                 let t: String = blocks
                     .iter()
                     .filter_map(|b| {
-                        if let cc_core::types::ContentBlock::Thinking { thinking, .. } = b {
+                        if let claurst_core::types::ContentBlock::Thinking { thinking, .. } = b {
                             Some(thinking.as_str())
                         } else {
                             None
@@ -6265,8 +6265,8 @@ impl SlashCommand for ShareCommand {
 
 /// Serialisable bundle written to / read from a `.teleport` file.
 mod teleport_bundle {
-    use cc_core::permissions::{PermissionAction, SerializedPermissionRule};
-    use cc_core::types::Message;
+    use claurst_core::permissions::{PermissionAction, SerializedPermissionRule};
+    use claurst_core::types::Message;
     use serde::{Deserialize, Serialize};
 
     pub const BUNDLE_VERSION: &str = "1";
@@ -6379,7 +6379,7 @@ impl SlashCommand for TeleportCommand {
 
                 // ---- collect recently accessed file paths from messages ----
                 let files: Vec<String> = {
-                    use cc_core::types::{ContentBlock, MessageContent};
+                    use claurst_core::types::{ContentBlock, MessageContent};
                     let mut seen: Vec<String> = Vec::new();
                     for msg in &ctx.messages {
                         if let MessageContent::Blocks(blocks) = &msg.content {
@@ -6428,7 +6428,7 @@ impl SlashCommand for TeleportCommand {
                     let denied: Vec<String> = ctx.config.disallowed_tools.clone();
                     // Build minimal SerializedPermissionRule list from config lists.
                     let mut rules = Vec::new();
-                    use cc_core::permissions::{PermissionAction, SerializedPermissionRule};
+                    use claurst_core::permissions::{PermissionAction, SerializedPermissionRule};
                     for name in &allowed {
                         rules.push(SerializedPermissionRule {
                             tool_name: Some(name.clone()),
@@ -6583,7 +6583,7 @@ impl SlashCommand for TeleportCommand {
                 let permissions = {
                     let allowed = ctx.config.allowed_tools.clone();
                     let denied = ctx.config.disallowed_tools.clone();
-                    use cc_core::permissions::{PermissionAction, SerializedPermissionRule};
+                    use claurst_core::permissions::{PermissionAction, SerializedPermissionRule};
                     let mut rules = Vec::new();
                     for name in &allowed {
                         rules.push(SerializedPermissionRule {
@@ -6725,7 +6725,7 @@ impl SlashCommand for CtxVizCommand {
             |(conv, tool), msg| {
                 let text = msg.get_all_text();
                 // Heuristic: if the message looks like a tool result, count separately
-                if msg.role == cc_core::types::Role::User && text.starts_with('[') {
+                if msg.role == claurst_core::types::Role::User && text.starts_with('[') {
                     (conv, tool + text.len())
                 } else {
                     (conv + text.len(), tool)
@@ -6981,10 +6981,10 @@ impl SlashCommand for InsightsCommand {
 
         // Count turns (user / assistant pairs)
         let user_turns: usize = messages.iter()
-            .filter(|m| matches!(m.role, cc_core::types::Role::User))
+            .filter(|m| matches!(m.role, claurst_core::types::Role::User))
             .count();
         let assistant_turns: usize = messages.iter()
-            .filter(|m| matches!(m.role, cc_core::types::Role::Assistant))
+            .filter(|m| matches!(m.role, claurst_core::types::Role::Assistant))
             .count();
         let total_turns = user_turns.min(assistant_turns);
 
@@ -6993,7 +6993,7 @@ impl SlashCommand for InsightsCommand {
             std::collections::HashMap::new();
         for msg in messages {
             for block in msg.get_tool_use_blocks() {
-                if let cc_core::types::ContentBlock::ToolUse { name, .. } = block {
+                if let claurst_core::types::ContentBlock::ToolUse { name, .. } = block {
                     *tool_counts.entry(name.clone()).or_insert(0) += 1;
                 }
             }
@@ -7226,7 +7226,7 @@ pub fn all_commands() -> Vec<Box<dyn SlashCommand>> {
             slash_name: "add-dir",
             target_name: "add-dir",
             slash_aliases: &[],
-            slash_description: "Add a directory to Claude Code's allowed workspace paths",
+            slash_description: "Add a directory to Claurst's allowed workspace paths",
             slash_help: "Usage: /add-dir <path>",
         }),
         Box::new(NamedCommandAdapter {
@@ -7254,7 +7254,7 @@ pub fn all_commands() -> Vec<Box<dyn SlashCommand>> {
             slash_name: "passes",
             target_name: "passes",
             slash_aliases: &[],
-            slash_description: "Share a free week of Claude Code with friends",
+            slash_description: "Share a free week of Claurst with friends",
             slash_help: "Usage: /passes",
         }),
         Box::new(NamedCommandAdapter {
@@ -7275,14 +7275,14 @@ pub fn all_commands() -> Vec<Box<dyn SlashCommand>> {
             slash_name: "desktop",
             target_name: "desktop",
             slash_aliases: &[],
-            slash_description: "Open the Claude Code desktop app",
+            slash_description: "Open the Claurst desktop app",
             slash_help: "Usage: /desktop",
         }),
         Box::new(NamedCommandAdapter {
             slash_name: "mobile",
             target_name: "mobile",
             slash_aliases: &[],
-            slash_description: "Set up Claude Code on mobile",
+            slash_description: "Set up Claurst on mobile",
             slash_help: "Usage: /mobile",
         }),
         Box::new(NamedCommandAdapter {
@@ -7296,7 +7296,7 @@ pub fn all_commands() -> Vec<Box<dyn SlashCommand>> {
             slash_name: "web-setup",
             target_name: "remote-setup",
             slash_aliases: &["remote-setup"],
-            slash_description: "Configure a remote Claude Code environment",
+            slash_description: "Configure a remote Claurst environment",
             slash_help: "Usage: /web-setup",
         }),
         Box::new(NamedCommandAdapter {
@@ -7352,11 +7352,11 @@ pub fn find_command(name: &str) -> Option<Box<dyn SlashCommand>> {
 
 /// Build `HelpEntry` values for all non-hidden commands, suitable for
 /// populating `HelpOverlay::commands` at startup.
-pub fn build_help_entries() -> Vec<cc_tui::overlays::HelpEntry> {
+pub fn build_help_entries() -> Vec<claurst_tui::overlays::HelpEntry> {
     all_commands()
         .iter()
         .filter(|c| !c.hidden())
-        .map(|c| cc_tui::overlays::HelpEntry {
+        .map(|c| claurst_tui::overlays::HelpEntry {
             name: c.name().to_string(),
             aliases: c.aliases().join(", "),
             description: c.description().to_string(),
@@ -7370,8 +7370,8 @@ pub async fn execute_command(
     input: &str,
     ctx: &mut CommandContext,
 ) -> Option<CommandResult> {
-    if !cc_tui::input::is_slash_command(input) { return None; }
-    let (name, args) = cc_tui::input::parse_slash_command(input);
+    if !claurst_tui::input::is_slash_command(input) { return None; }
+    let (name, args) = claurst_tui::input::parse_slash_command(input);
 
     // First check built-in commands.
     if let Some(cmd) = find_command(name) {
@@ -7380,7 +7380,7 @@ pub async fn execute_command(
 
     // Then check plugin-defined slash commands.
     let project_dir = ctx.working_dir.clone();
-    let registry = cc_plugins::load_plugins(&project_dir, &[]).await;
+    let registry = claurst_plugins::load_plugins(&project_dir, &[]).await;
     let cmd_name = name.trim_start_matches('/');
     for cmd_def in registry.all_command_defs() {
         if cmd_def.name == cmd_name {
@@ -7404,11 +7404,11 @@ pub mod named_commands;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cc_core::cost::CostTracker;
+    use claurst_core::cost::CostTracker;
 
     fn make_ctx() -> CommandContext {
         CommandContext {
-            config: cc_core::config::Config::default(),
+            config: claurst_core::config::Config::default(),
             cost_tracker: CostTracker::new(),
             messages: vec![],
             working_dir: std::path::PathBuf::from("."),

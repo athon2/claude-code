@@ -23,15 +23,15 @@ use crate::settings_screen::SettingsScreen;
 use crate::stats_dialog::StatsDialogState;
 use crate::theme_screen::ThemeScreen;
 use crate::{agents_view::{AgentInfo, AgentStatus, AgentsMenuState, AgentsRoute}, diff_viewer::DiffPane};
-use cc_core::config::{Config, Settings, Theme};
-use cc_core::cost::CostTracker;
-use cc_core::file_history::FileHistory;
-use cc_core::keybindings::{
+use claurst_core::config::{Config, Settings, Theme};
+use claurst_core::cost::CostTracker;
+use claurst_core::file_history::FileHistory;
+use claurst_core::keybindings::{
     KeyContext, KeybindingResolver, KeybindingResult, ParsedKeystroke, UserKeybindings,
 };
-use cc_core::types::{Message, Role};
-use cc_query::QueryEvent;
-use cc_tools;
+use claurst_core::types::{Message, Role};
+use claurst_query::QueryEvent;
+use claurst_tools;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
@@ -53,7 +53,7 @@ const PROMPT_SLASH_COMMANDS: &[(&str, &str)] = &[
     ("diff", "Inspect the current git diff"),
     ("doctor", "Run diagnostics"),
     ("effort", "Set effort level (low/medium/high/max)"),
-    ("exit", "Quit Claude Code"),
+    ("exit", "Quit Claurst"),
     ("export", "Export conversation"),
     ("fast", "Toggle fast mode"),
     ("feedback", "Open session feedback survey"),
@@ -62,7 +62,7 @@ const PROMPT_SLASH_COMMANDS: &[(&str, &str)] = &[
     ("hooks", "Browse configured hooks (read-only)"),
     ("init", "Initialize CLAUDE.md for this project"),
     ("insights", "Generate a session analysis report with conversation statistics"),
-    ("install-slack-app", "Install the Claude Code Slack integration"),
+    ("install-slack-app", "Install the Claurst Slack integration"),
     ("keybindings", "Show keybinding configuration"),
     ("login", "Log in to Claude"),
     ("logout", "Log out of Claude"),
@@ -72,7 +72,7 @@ const PROMPT_SLASH_COMMANDS: &[(&str, &str)] = &[
     ("output-style", "Toggle output style (auto/stream/verbose)"),
     ("plugin", "Manage plugins (list/info/enable/disable/reload)"),
     ("privacy", "Open privacy settings"),
-    ("quit", "Quit Claude Code"),
+    ("quit", "Quit Claurst"),
     ("rename", "Rename this session"),
     ("resume", "Resume a previous session"),
     ("review", "Review changes (git diff)"),
@@ -443,7 +443,7 @@ pub struct App {
     /// Remote session URL (set when bridge connects; readable by commands).
     pub remote_session_url: Option<String>,
     /// Live MCP manager snapshot source when available.
-    pub mcp_manager: Option<Arc<cc_mcp::McpManager>>,
+    pub mcp_manager: Option<Arc<claurst_mcp::McpManager>>,
     /// Queued request for a real MCP reconnect from the interactive loop.
     pub pending_mcp_reconnect: bool,
     /// Shared file-history service used for turn diff reconstruction.
@@ -541,11 +541,11 @@ pub struct App {
     // ---- Voice hold-to-talk ------------------------------------------------
 
     /// The global voice recorder, Some when voice is enabled in config.
-    pub voice_recorder: Option<Arc<Mutex<cc_core::voice::VoiceRecorder>>>,
+    pub voice_recorder: Option<Arc<Mutex<claurst_core::voice::VoiceRecorder>>>,
     /// True while recording is active (Alt+V toggled on).
     pub voice_recording: bool,
     /// Receiver for VoiceEvent messages produced by the recorder task.
-    pub voice_event_rx: Option<tokio::sync::mpsc::Receiver<cc_core::voice::VoiceEvent>>,
+    pub voice_event_rx: Option<tokio::sync::mpsc::Receiver<claurst_core::voice::VoiceEvent>>,
     /// Receiver for model-list results fetched in the background when the
     /// /model picker opens.  Drained each frame so models appear as soon as
     /// the fetch completes.
@@ -769,12 +769,12 @@ impl App {
             voice_recorder: {
                 // Check whether voice input has been enabled via the /voice command
                 // (stored in ~/.claude/ui-settings.json).  We also accept
-                // CLAUDE_CODE_VOICE_ENABLED=1 as an override for easier testing.
-                let voice_on = std::env::var("CLAUDE_CODE_VOICE_ENABLED")
+                // CLAURST_VOICE_ENABLED=1 as an override for easier testing.
+                let voice_on = std::env::var("CLAURST_VOICE_ENABLED")
                     .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                     .unwrap_or(false)
                     || {
-                        let path = cc_core::config::Settings::config_dir()
+                        let path = claurst_core::config::Settings::config_dir()
                             .join("ui-settings.json");
                         std::fs::read_to_string(&path)
                             .ok()
@@ -783,7 +783,7 @@ impl App {
                             .unwrap_or(false)
                     };
                 if voice_on {
-                    let recorder = cc_core::voice::global_voice_recorder();
+                    let recorder = claurst_core::voice::global_voice_recorder();
                     if let Ok(mut r) = recorder.lock() {
                         r.set_enabled(true);
                     }
@@ -825,8 +825,8 @@ impl App {
     /// Only enabled when the `token_budget` feature flag is active.
     #[cfg(feature = "token_budget")]
     fn load_token_budget() -> Option<u32> {
-        // First check CLAUDE_CODE_TOKEN_BUDGET env var
-        if let Ok(budget_str) = std::env::var("CLAUDE_CODE_TOKEN_BUDGET") {
+        // First check CLAURST_TOKEN_BUDGET env var
+        if let Ok(budget_str) = std::env::var("CLAURST_TOKEN_BUDGET") {
             if let Ok(budget) = budget_str.parse::<u32>() {
                 return Some(budget);
             }
@@ -937,7 +937,7 @@ impl App {
                 // Kick off a background fetch of the model list if we don't
                 // already have a fresh list and aren't already loading.
                 if !self.model_picker.models_loaded && !self.model_picker.loading_models {
-                    if let Ok(client) = cc_api::AnthropicClient::from_config(&self.config) {
+                    if let Ok(client) = claurst_api::AnthropicClient::from_config(&self.config) {
                         let (tx, rx) = tokio::sync::mpsc::channel(1);
                         self.model_fetch_rx = Some(rx);
                         self.model_picker.loading_models = true;
@@ -984,7 +984,7 @@ impl App {
                 true
             }
             "plan" => {
-                use cc_core::config::PermissionMode;
+                use claurst_core::config::PermissionMode;
                 self.plan_mode = !self.plan_mode;
                 self.config.permission_mode = if self.plan_mode {
                     PermissionMode::Plan
@@ -1065,7 +1065,7 @@ impl App {
                     self.voice_mode_notice.dismiss();
                     self.status_message = Some("Voice mode disabled.".to_string());
                 } else {
-                    let recorder = cc_core::voice::global_voice_recorder();
+                    let recorder = claurst_core::voice::global_voice_recorder();
                     if let Ok(mut r) = recorder.lock() {
                         r.set_enabled(true);
                     }
@@ -1203,20 +1203,20 @@ impl App {
                         .collect();
 
                     let (status, error_message) = match manager.server_status(&server.name) {
-                        cc_mcp::McpServerStatus::Connected { .. } => {
+                        claurst_mcp::McpServerStatus::Connected { .. } => {
                             (McpViewStatus::Connected, None)
                         }
-                        cc_mcp::McpServerStatus::Connecting => {
+                        claurst_mcp::McpServerStatus::Connecting => {
                             (McpViewStatus::Connecting, None)
                         }
-                        cc_mcp::McpServerStatus::Disconnected { last_error } => {
+                        claurst_mcp::McpServerStatus::Disconnected { last_error } => {
                             if last_error.is_some() {
                                 (McpViewStatus::Error, last_error)
                             } else {
                                 (McpViewStatus::Disconnected, None)
                             }
                         }
-                        cc_mcp::McpServerStatus::Failed { error, .. } => {
+                        claurst_mcp::McpServerStatus::Failed { error, .. } => {
                             (McpViewStatus::Error, Some(error))
                         }
                     };
@@ -1375,7 +1375,7 @@ impl App {
     /// appropriate.  Call this after updating `token_count`.
     pub fn check_token_warnings(&mut self) {
         let window =
-            cc_query::context_window_for_model(&self.model_name) as u32;
+            claurst_query::context_window_for_model(&self.model_name) as u32;
         if window == 0 {
             return;
         }
@@ -1558,7 +1558,7 @@ impl App {
         self.refresh_turn_diff_from_history();
     }
 
-    pub fn attach_mcp_manager(&mut self, mcp_manager: Arc<cc_mcp::McpManager>) {
+    pub fn attach_mcp_manager(&mut self, mcp_manager: Arc<claurst_mcp::McpManager>) {
         self.mcp_manager = Some(mcp_manager);
     }
 
@@ -1654,7 +1654,7 @@ impl App {
     /// Persist `has_completed_onboarding = true` to the settings file.
     /// Best-effort: failures are silently ignored to not disrupt the session.
     fn persist_onboarding_complete() -> anyhow::Result<()> {
-        let mut settings = cc_core::config::Settings::load_sync()?;
+        let mut settings = claurst_core::config::Settings::load_sync()?;
         settings.has_completed_onboarding = true;
         settings.save_sync()
     }
@@ -2434,7 +2434,7 @@ impl App {
             // Default → AcceptEdits → BypassPermissions → Default
             // Mirrors TS bottom-left indicator cycling behaviour.
             KeyCode::BackTab if !self.is_streaming => {
-                use cc_core::config::PermissionMode;
+                use claurst_core::config::PermissionMode;
                 self.config.permission_mode = match self.config.permission_mode {
                     PermissionMode::Default => PermissionMode::AcceptEdits,
                     PermissionMode::AcceptEdits => PermissionMode::BypassPermissions,
@@ -2505,7 +2505,7 @@ impl App {
             // ---- Toggle last thinking block (t key) -------------------
             KeyCode::Char('t') if !self.is_streaming => {
                 // Find the last thinking block in the message list and toggle it
-                use cc_core::types::ContentBlock;
+                use claurst_core::types::ContentBlock;
                 use std::collections::hash_map::DefaultHasher;
                 use std::hash::{Hash, Hasher};
                 'outer: for msg in self.messages.iter().rev() {
@@ -3002,7 +3002,7 @@ impl App {
             }
             "reverseIndent" => {
                 // Shift+Tab: Reverse indent (cycle permission mode)
-                use cc_core::config::PermissionMode;
+                use claurst_core::config::PermissionMode;
                 self.config.permission_mode = match self.config.permission_mode {
                     PermissionMode::Default => PermissionMode::AcceptEdits,
                     PermissionMode::AcceptEdits => PermissionMode::BypassPermissions,
@@ -3561,21 +3561,21 @@ impl App {
                 }
                 self.is_streaming = true;
                 match stream_evt {
-                    cc_api::StreamEvent::ContentBlockDelta { delta, .. } => {
+                    claurst_api::StreamEvent::ContentBlockDelta { delta, .. } => {
                         // Reset stall timer on any incoming delta — we're making progress.
                         self.stall_start = None;
                         match delta {
-                            cc_api::streaming::ContentDelta::TextDelta { text } => {
+                            claurst_api::streaming::ContentDelta::TextDelta { text } => {
                                 self.streaming_text.push_str(&text);
                                 self.invalidate_transcript();
                             }
-                            cc_api::streaming::ContentDelta::ThinkingDelta { thinking } => {
+                            claurst_api::streaming::ContentDelta::ThinkingDelta { thinking } => {
                                 debug!(len = thinking.len(), "Thinking delta received");
                             }
                             _ => {}
                         }
                     }
-                    cc_api::StreamEvent::MessageStop => {
+                    claurst_api::StreamEvent::MessageStop => {
                         self.is_streaming = false;
                         self.spinner_verb = None;
                         self.stall_start = None;
@@ -3687,7 +3687,7 @@ impl App {
             }
             QueryEvent::TokenWarning { state, pct_used } => {
                 // Push a notification for context window warnings (notification + threshold tracking).
-                use cc_query::compact::TokenWarningState;
+                use claurst_query::compact::TokenWarningState;
 
                 // Only escalate — never repeat a threshold already shown.
                 match state {
@@ -3758,7 +3758,7 @@ impl App {
             // TranscriptReady event we insert the text directly into the
             // prompt so the user can review and submit it.
             {
-                use cc_core::voice::VoiceEvent;
+                use claurst_core::voice::VoiceEvent;
                 let mut events = Vec::new();
                 if let Some(ref mut rx) = self.voice_event_rx {
                     while let Ok(ev) = rx.try_recv() {
@@ -3810,7 +3810,7 @@ impl App {
 
             // Refresh task list if the overlay is visible (every frame for live updates)
             if self.tasks_overlay.visible {
-                self.tasks_overlay.refresh_tasks(&cc_tools::TASK_STORE);
+                self.tasks_overlay.refresh_tasks(&claurst_tools::TASK_STORE);
             }
 
             // Draw the frame
@@ -4005,7 +4005,7 @@ mod tests {
 
     fn make_app() -> App {
         let config = Config::default();
-        let cost_tracker = cc_core::cost::CostTracker::new();
+        let cost_tracker = claurst_core::cost::CostTracker::new();
         App::new(config, cost_tracker)
     }
 

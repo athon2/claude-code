@@ -147,7 +147,7 @@ fn validate_transition(id: &str, old: &TodoStatus, new: &TodoStatus) -> Result<(
 #[async_trait]
 impl Tool for TodoWriteTool {
     fn name(&self) -> &str {
-        cc_core::constants::TOOL_NAME_TODO_WRITE
+        claurst_core::constants::TOOL_NAME_TODO_WRITE
     }
 
     fn description(&self) -> &str {

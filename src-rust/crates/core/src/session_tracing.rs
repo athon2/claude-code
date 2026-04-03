@@ -1,9 +1,7 @@
-//! Session Tracing — OpenTelemetry span stubs for free-code builds.
+//! Session Tracing — OpenTelemetry span stubs.
 //!
-//! The free/OSS build does not export telemetry spans. All span operations
-//! are no-ops that compile unchanged but discard all tracing data.
-//!
-//! Mirrors free-code's approach: replace complex span tracking with dummy objects.
+//! Telemetry spans are no-ops: all span operations compile unchanged but
+//! discard all tracing data.
 
 use std::sync::Arc;
 

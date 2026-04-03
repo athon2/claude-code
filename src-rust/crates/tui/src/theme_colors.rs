@@ -46,7 +46,7 @@ impl ColorPalette {
         }
     }
 
-    /// Default Claude Code theme
+    /// Default Claurst theme
     fn default_theme() -> Self {
         Self {
             error: Color::Rgb(255, 87, 51),        // Bright red-orange

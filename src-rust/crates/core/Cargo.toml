@@ -1,5 +1,5 @@
 [package]
-name = "cc-core"
+name = "claurst-core"
 version.workspace = true
 edition.workspace = true
 
@@ -9,7 +9,7 @@ edition.workspace = true
 # returns an error instead of accessing hardware.
 voice = ["dep:cpal"]
 
-# Experimental/feature-flagged capabilities for free-code builds
+# Experimental/feature-flagged capabilities
 default = ["voice", "ultraplan"]
 
 # Interaction & UI features

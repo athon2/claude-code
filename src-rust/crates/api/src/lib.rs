@@ -1,4 +1,4 @@
-// cc-api: Anthropic API client with streaming SSE support for the Claude Code
+// claurst-api: Anthropic API client with streaming SSE support for Claurst
 // Rust port.
 //
 // Handles:
@@ -9,9 +9,9 @@
 // - Rate-limit (429) and overloaded (529) retry with exponential back-off
 // - Authentication via API key from env or config
 
-use cc_core::constants::{ANTHROPIC_API_VERSION, ANTHROPIC_BETA_HEADER};
-use cc_core::error::ClaudeError;
-use cc_core::types::{ContentBlock, Message, MessageContent, Role, ToolDefinition, UsageInfo};
+use claurst_core::constants::{ANTHROPIC_API_VERSION, ANTHROPIC_BETA_HEADER};
+use claurst_core::error::ClaudeError;
+use claurst_core::types::{ContentBlock, Message, MessageContent, Role, ToolDefinition, UsageInfo};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -365,7 +365,7 @@ pub mod client {
         fn default() -> Self {
             Self {
                 api_key: String::new(),
-                api_base: cc_core::constants::ANTHROPIC_API_BASE.to_string(),
+                api_base: claurst_core::constants::ANTHROPIC_API_BASE.to_string(),
                 api_version: ANTHROPIC_API_VERSION.to_string(),
                 beta_features: ANTHROPIC_BETA_HEADER.to_string(),
                 max_retries: 5,
@@ -401,7 +401,7 @@ pub mod client {
         }
 
         /// Convenience constructor that resolves the key from config/env.
-        pub fn from_config(cfg: &cc_core::config::Config) -> anyhow::Result<Self> {
+        pub fn from_config(cfg: &claurst_core::config::Config) -> anyhow::Result<Self> {
             let api_key = cfg
                 .resolve_api_key()
                 .ok_or_else(|| anyhow::anyhow!("No API key found"))?;

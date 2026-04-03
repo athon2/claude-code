@@ -1,8 +1,7 @@
 //! OpenAI Codex OAuth configuration and constants.
 //!
-//! Mirrors free-code's OpenAI Codex provider integration.
 
-/// OpenAI Codex OAuth client ID for Claude Code
+/// OpenAI Codex OAuth client ID for Claurst
 pub const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 
 /// OpenAI OAuth authorization endpoint

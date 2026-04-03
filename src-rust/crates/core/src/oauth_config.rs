@@ -337,9 +337,9 @@ pub fn clear_codex_tokens() -> anyhow::Result<()> {
 }
 
 /// Returns true if the user has a valid Codex access token AND
-/// CLAUDE_CODE_USE_OPENAI=1 is set.
+/// CLAURST_USE_OPENAI=1 is set.
 pub fn is_codex_subscriber() -> bool {
-    if std::env::var("CLAUDE_CODE_USE_OPENAI").as_deref() != Ok("1") {
+    if std::env::var("CLAURST_USE_OPENAI").as_deref() != Ok("1") {
         return false;
     }
     get_codex_tokens()
